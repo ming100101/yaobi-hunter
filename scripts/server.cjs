@@ -78,8 +78,18 @@ function proxyTo(hostname, prefix, req, res, pathBase = '') {
   up.end();
 }
 
+// magic health endpoint so a second launch can tell "is 4780 held by ANOTHER
+// yaobi-hunter, or by some unrelated program?" before deciding what to do
+const PING_PATH = '/__yaobi_ping__';
+const PING_TOKEN = 'yaobi-hunter-ok';
+
 const server = http.createServer((req, res) => {
   const rawUrl = req.url || '/';
+  if (rawUrl === PING_PATH) {
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end(PING_TOKEN);
+    return;
+  }
   if (rawUrl.startsWith('/okx/')) return proxyTo('www.okx.com', '/okx', req, res);
   if (rawUrl.startsWith('/bnv/')) {
     // S3 XML listing endpoint for the Binance public data bucket
@@ -160,7 +170,8 @@ function countProfileBrowsers(cb) {
   );
 }
 
-function openAppWindow(url) {
+function openAppWindow(url, opts) {
+  const standalone = opts && opts.standalone;
   const profile = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'YaobiHunter', 'app-profile');
   fs.mkdirSync(profile, { recursive: true });
   const child = spawn(
@@ -174,6 +185,14 @@ function openAppWindow(url) {
     ],
     { stdio: 'ignore' },
   );
+  // standalone = a second launch that owns NO server; it just opens a window
+  // against the existing instance and the caller exits right away. Don't attach
+  // the profile-wide shutdown poll below (it can't tell windows apart and would
+  // keep this process alive as long as the FIRST instance's window is open).
+  if (standalone) {
+    child.on('error', () => execFile('cmd', ['/c', 'start', '', url], { windowsHide: true }));
+    return;
+  }
   // Edge/Chrome's launcher process may exit immediately while the real window
   // lives on in a re-parented process — so on launcher exit, poll for browser
   // processes still holding our profile and shut down only when none remain
@@ -201,11 +220,48 @@ function openAppWindow(url) {
   });
 }
 
+// Is the port held by ANOTHER yaobi-hunter instance? Resolves the base URL if
+// so, null if it's some unrelated program (or nothing answers in time).
+function probeExisting(p, cb) {
+  const req = http.get(
+    { hostname: '127.0.0.1', port: p, path: PING_PATH, timeout: 1500 },
+    (res) => {
+      let body = '';
+      res.on('data', (d) => (body += d));
+      res.on('end', () => cb(body.trim() === PING_TOKEN ? `http://localhost:${p}` : null));
+    },
+  );
+  req.on('error', () => cb(null));
+  req.on('timeout', () => {
+    req.destroy();
+    cb(null);
+  });
+}
+
 function listen() {
   server.once('error', (e) => {
-    if (e && e.code === 'EADDRINUSE' && port < 4790) {
-      port += 1;
-      listen();
+    if (e && e.code === 'EADDRINUSE') {
+      // Single-instance guard: if OUR app already owns this port, don't spin up
+      // a second server (two servers = two 15-min scans fighting for the same
+      // OKX rate-limit budget). Point a window at the existing one and exit.
+      probeExisting(port, (existingUrl) => {
+        if (existingUrl) {
+          console.log(`already running at ${existingUrl} — opening another window there`);
+          if (!noOpen && process.platform === 'win32') {
+            if (chromium) openAppWindow(existingUrl, { standalone: true });
+            else execFile('cmd', ['/c', 'start', '', existingUrl], { windowsHide: true });
+          }
+          // give the spawned window a beat to launch before this process exits
+          setTimeout(() => process.exit(0), noOpen ? 0 : 1200);
+        } else if (port < 4790) {
+          // port held by something else — try the next one
+          port += 1;
+          listen();
+        } else {
+          console.error('failed to start: no free port in 4780-4790');
+          process.exit(1);
+        }
+      });
     } else {
       console.error(`failed to start: ${e && e.message}`);
       process.exit(1);

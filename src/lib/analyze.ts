@@ -152,8 +152,8 @@ function meanStd(xs: number[]): [number, number] {
   return [m, Math.sqrt(v)];
 }
 
-function rangePos(candles: Candle[], i: number): number {
-  const s = Math.max(0, i - W);
+function rangePos(candles: Candle[], i: number, win = W): number {
+  const s = Math.max(0, i - win);
   let lo = candles[s].low;
   let hi = candles[s].high;
   for (let j = s + 1; j <= i; j++) {
@@ -166,34 +166,43 @@ function rangePos(candles: Candle[], i: number): number {
 // Rolling composite strength [0..100] at the base resolution — rewards rising
 // open interest, constructive trend, active buying and room in the range, and
 // penalizes overheated funding.
-function strengthSeries(
+// Rolling composite strength. Lookbacks are expressed in real time (1h/4h/8h)
+// via `barsPerHour`, so the SAME line can be computed on the 5m base
+// (barsPerHour=12) or the 1H long series (barsPerHour=1) and mean the same
+// thing at either resolution — that's what lets the strength panel keep
+// aligning with the price panel on the long timeframes.
+export function computeStrengthSeries(
   candles: Candle[],
   volume: VolumeBar[],
   oi: SeriesPoint[],
   funding: SeriesPoint[],
+  barsPerHour = 12,
 ): SeriesPoint[] {
+  const h1 = Math.max(1, Math.round(barsPerHour));
+  const h4 = 4 * h1;
+  const w = 8 * h1;
   const n = candles.length;
   const out: SeriesPoint[] = new Array(n);
   let firstIdx = -1;
 
   for (let i = 0; i < n; i++) {
-    if (i < H1) {
+    if (i < h1) {
       out[i] = { time: candles[i].time, value: NaN };
       continue;
     }
     const c = candles[i].close;
-    const ret4 = c / candles[Math.max(0, i - H4)].close - 1;
-    const oiRef = oi[Math.max(0, i - H4)].value;
+    const ret4 = c / candles[Math.max(0, i - h4)].close - 1;
+    const oiRef = oi[Math.max(0, i - h4)].value;
     const oi4 = oiRef > 0 ? oi[i].value / oiRef - 1 : 0;
-    const pos = rangePos(candles, i);
+    const pos = rangePos(candles, i, w);
 
-    const vs = Math.max(0, i - W);
+    const vs = Math.max(0, i - w);
     const prior: number[] = [];
     for (let j = vs; j < i; j++) prior.push(volume[j].value);
     const [vm, vsd] = meanStd(prior);
     const z = vsd > 0 ? (volume[i].value - vm) / vsd : 0;
 
-    const bs = Math.max(0, i - H4);
+    const bs = Math.max(0, i - h4);
     let up = 0;
     let tot = 0;
     for (let j = bs; j <= i; j++) {
@@ -294,7 +303,7 @@ export interface Derived {
 }
 
 export function analyze({ candles, volume, oi, fundingHist }: AnalyzeInput): Derived {
-  const strengthHist = strengthSeries(candles, volume, oi, fundingHist);
+  const strengthHist = computeStrengthSeries(candles, volume, oi, fundingHist, 12);
 
   // stable metrics on the 15m aggregation (the scanner's native resolution)
   const c15 = aggregateCandles(candles, 3);

@@ -1,4 +1,4 @@
-import type { Candle, Coin, SeriesPoint, VolumeBar } from '../types';
+import { TIMEFRAMES, type Candle, type Coin, type SeriesPoint, type Timeframe, type VolumeBar } from '../types';
 
 // Bar times are labeled by bucket-open time (OHLC convention). The base series
 // length divides evenly by every timeframe multiplier, so bucket boundaries
@@ -44,15 +44,37 @@ export function aggregateVolume(base: VolumeBar[], candles: Candle[], mult: numb
   return out;
 }
 
-export function aggregateCoin(coin: Coin, mult: number): Coin {
-  if (mult <= 1) return coin;
-  const candles = aggregateCandles(coin.candles, mult);
+// Aggregate the four series + strength by `mult` buckets of the given base.
+function aggregateFrom(
+  coin: Coin,
+  src: { candles: Candle[]; volume: VolumeBar[]; oi: SeriesPoint[]; fundingHist: SeriesPoint[]; strengthHist: SeriesPoint[] },
+  mult: number,
+): Coin {
+  if (mult <= 1) {
+    return { ...coin, ...src, long: undefined };
+  }
+  const candles = aggregateCandles(src.candles, mult);
   return {
     ...coin,
     candles,
-    volume: aggregateVolume(coin.volume, candles, mult),
-    oi: aggregateLast(coin.oi, mult),
-    fundingHist: aggregateLast(coin.fundingHist, mult),
-    strengthHist: aggregateLast(coin.strengthHist, mult),
+    volume: aggregateVolume(src.volume, candles, mult),
+    oi: aggregateLast(src.oi, mult),
+    fundingHist: aggregateLast(src.fundingHist, mult),
+    strengthHist: aggregateLast(src.strengthHist, mult),
+    long: undefined, // the aggregated view is self-contained; don't carry the raw long series
   };
+}
+
+// Produce the display Coin for a timeframe: 5m/15m from the 5m base, 1h/4h from
+// the 1H long series when present (weeks of history), else a graceful fallback
+// to aggregating the 48h 5m base.
+export function aggregateForTf(coin: Coin, tf: Timeframe): Coin {
+  const spec = TIMEFRAMES.find((t) => t.key === tf) ?? TIMEFRAMES[0];
+  if (spec.base === '1h' && coin.long) return aggregateFrom(coin, coin.long, spec.mult);
+  return aggregateFrom(coin, coin, spec.mult5);
+}
+
+// retained for backwards compatibility / tests
+export function aggregateCoin(coin: Coin, mult: number): Coin {
+  return aggregateFrom(coin, coin, mult);
 }

@@ -1,6 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
 import {
-  TIMEFRAMES,
   type Coin,
   type EntryKind,
   type ScanResult,
@@ -9,7 +8,7 @@ import {
   type Timeframe,
 } from '../types';
 import { ChartSync } from '../lib/chartSync';
-import { aggregateCoin } from '../lib/aggregate';
+import { aggregateForTf } from '../lib/aggregate';
 import { interpret } from '../lib/interpret';
 import { fmtAge, fmtClock, fmtMoney, fmtPct, fmtPrice, pctSign, strengthCls } from '../lib/format';
 import InsightZone from './InsightZone';
@@ -89,10 +88,10 @@ export default function CoinDetail({
   onTogglePin: () => void;
 }) {
   const sync = useMemo(() => new ChartSync(), []);
-  const mult = useMemo(() => TIMEFRAMES.find((t) => t.key === tf)?.mult ?? 1, [tf]);
   // aggregate every panel's series to the selected timeframe together, so their
-  // bar times stay identical and the shared crosshair/range sync lines up
-  const view = useMemo(() => aggregateCoin(coin, mult), [coin, mult]);
+  // bar times stay identical and the shared crosshair/range sync lines up.
+  // 1h/4h pull from the coin's 1H long series (weeks of history) when present.
+  const view = useMemo(() => aggregateForTf(coin, tf), [coin, tf]);
   // pattern read runs on the raw scan-resolution data, independent of display tf
   const insights = useMemo(() => interpret(coin), [coin]);
   const { plan } = coin;

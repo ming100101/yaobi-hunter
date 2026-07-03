@@ -2,12 +2,19 @@ import type {
   Candle,
   Coin,
   CoinLite,
+  LongSeries,
   ScanProgress,
   SearchHit,
   SeriesPoint,
   VolumeBar,
 } from '../types';
-import { analyze, confirmEarlyAccum, detectEarlySetup, EA_RS_MIN_PCT } from '../lib/analyze';
+import {
+  analyze,
+  computeStrengthSeries,
+  confirmEarlyAccum,
+  detectEarlySetup,
+  EA_RS_MIN_PCT,
+} from '../lib/analyze';
 
 // Real USDT-perp data from OKX v5. Reachable where Binance/Bybit are geo-blocked.
 // In the browser BASE is the Vite proxy path (/okx); a node dry-run can pass the
@@ -16,6 +23,8 @@ import { analyze, confirmEarlyAccum, detectEarlySetup, EA_RS_MIN_PCT } from '../
 const BASE_BARS = 576; // 2 days of 5m bars
 const MIN_BARS = 300; // drop freshly-listed coins without enough history
 const BATCH_SIZE = 20; // coins per rolling-scan batch
+const LONG_BARS = 600; // ~25 days of 1H bars for the detail chart's long timeframes
+const LONG_MIN_BARS = 120; // need a few days of 1H history for 1h/4h to be worth it
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -134,12 +143,14 @@ export async function fetchLiveCoin(baseUrl: string, hit: SearchHit, nowMs: numb
   const { candles, volume, times } = await getCandles(baseUrl, hit.instId, tzShift);
   if (candles.length < MIN_BARS) throw new Error(`${hit.base} 上市時間過短，歷史 K 線不足`);
   const flat = (): SeriesPoint[] => times.map((t) => ({ time: t, value: 0 }));
-  const [oi, fundingHist] = await Promise.all([
+  // 5m analysis series + the 1H long-history series fetched together
+  const [oi, fundingHist, long] = await Promise.all([
     getOi(baseUrl, hit.base, tzShift, times).catch(() => flat()),
     getFunding(baseUrl, hit.instId, tzShift, times).catch(() => flat()),
+    getLongSeries(baseUrl, hit.instId, hit.base, tzShift),
   ]);
   const derived = analyze({ candles, volume, oi, fundingHist });
-  const coin: Coin = { symbol: hit.base, candles, volume, oi, fundingHist, ...derived, earlyAccum: null };
+  const coin: Coin = { symbol: hit.base, candles, volume, oi, fundingHist, ...derived, earlyAccum: null, long };
 
   // 早期蓄力 watchlist check for on-demand opens too (cheap gate first, the
   // two extra requests only when the setup is actually on)
@@ -210,6 +221,71 @@ async function getCandles(
     volume.push({ time, value: quoteVol, up: close >= open });
   }
   return { candles, volume, times };
+}
+
+// The 1H long-history series for a detail coin's higher timeframes. Independent
+// of the 5m series above; failures are non-fatal (1h/4h fall back to the 48h
+// 5m base). ~25d candles, 30d OI (rubik 1H), 91d funding — all real, resampled
+// onto the candle grid.
+async function getLongSeries(
+  base: string,
+  instId: string,
+  ccy: string,
+  tzShift: number,
+): Promise<LongSeries | undefined> {
+  try {
+    const page1 = await okxGet(base, `/api/v5/market/candles?instId=${instId}&bar=1H&limit=300`);
+    let rows = page1;
+    if (page1.length) {
+      const oldest = page1[page1.length - 1][0];
+      const page2 = await okxGet(base, `/api/v5/market/candles?instId=${instId}&bar=1H&after=${oldest}&limit=300`);
+      rows = page1.concat(page2);
+    }
+    const seen = new Set<string>();
+    const asc = rows
+      .filter((r) => (seen.has(r[0]) ? false : (seen.add(r[0]), true)))
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .slice(-LONG_BARS);
+    if (asc.length < LONG_MIN_BARS) return undefined;
+
+    const candles: Candle[] = [];
+    const volume: VolumeBar[] = [];
+    const times: number[] = [];
+    for (const r of asc) {
+      const time = Math.floor(Number(r[0]) / 1000) + tzShift;
+      const open = Number(r[1]);
+      const close = Number(r[4]);
+      times.push(time);
+      candles.push({ time, open, high: Number(r[2]), low: Number(r[3]), close });
+      volume.push({ time, value: Number(r[7]), up: close >= open });
+    }
+
+    const [oi, fundingHist] = await Promise.all([
+      okxGet(base, `/api/v5/rubik/stat/contracts/open-interest-volume?ccy=${ccy}&period=1H`)
+        .then((oiRows) => {
+          const src = oiRows
+            .map((r) => ({ t: Math.floor(Number(r[0]) / 1000) + tzShift, v: Number(r[1]) }))
+            .filter((p) => Number.isFinite(p.v))
+            .sort((a, b) => a.t - b.t);
+          return src.length ? resample(times, src) : times.map((t) => ({ time: t, value: 0 }));
+        })
+        .catch(() => times.map((t) => ({ time: t, value: 0 }))),
+      okxGet(base, `/api/v5/public/funding-rate-history?instId=${instId}&limit=300`)
+        .then((fRows) => {
+          const src = fRows
+            .map((r) => ({ t: Math.floor(Number(r.fundingTime) / 1000) + tzShift, v: Number(r.fundingRate) * 100 }))
+            .filter((p) => Number.isFinite(p.v))
+            .sort((a, b) => a.t - b.t);
+          return resample(times, src);
+        })
+        .catch(() => times.map((t) => ({ time: t, value: 0 }))),
+    ]);
+
+    const strengthHist = computeStrengthSeries(candles, volume, oi, fundingHist, 1);
+    return { candles, volume, oi, fundingHist, strengthHist };
+  } catch {
+    return undefined;
+  }
 }
 
 async function getOi(base: string, ccy: string, tzShift: number, times: number[]): Promise<SeriesPoint[]> {

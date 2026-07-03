@@ -58,6 +58,20 @@ export interface Coin {
   oi: SeriesPoint[];
   fundingHist: SeriesPoint[];
   strengthHist: SeriesPoint[];
+  // optional 1H-resolution long-history series (~25-30 days) for the detail
+  // chart's higher timeframes; absent in demo/older-cache coins (1h/4h then
+  // gracefully fall back to aggregating the 48h 5m base)
+  long?: LongSeries;
+}
+
+// A second, coarser+longer series attached to a detail Coin. Same shape as the
+// 5m base but sampled at 1H, so 1h/4h timeframes show weeks instead of 12 bars.
+export interface LongSeries {
+  candles: Candle[];
+  volume: VolumeBar[];
+  oi: SeriesPoint[];
+  fundingHist: SeriesPoint[];
+  strengthHist: SeriesPoint[];
 }
 
 export type ScanSource = 'okx' | 'demo';
@@ -125,10 +139,21 @@ export const STRENGTH_THRESHOLD = 70;
 // up by `mult` base bars for display; the detail view stays in sync because
 // every panel uses the same multiplier.
 export type Timeframe = '5m' | '15m' | '1h' | '4h';
+export type TfBase = '5m' | '1h';
 
-export const TIMEFRAMES: ReadonlyArray<{ key: Timeframe; label: string; mult: number }> = [
-  { key: '5m', label: '5m', mult: 1 },
-  { key: '15m', label: '15m', mult: 3 },
-  { key: '1h', label: '1H', mult: 12 },
-  { key: '4h', label: '4H', mult: 48 },
+// `base` = which stored series a timeframe aggregates from; `mult` = buckets of
+// that base per display bar. 5m/15m ride the 5m base (48h); 1h/4h ride the 1H
+// long series (~25d) when present. `mult5` is the equivalent 5m-base bucket
+// size used as a fallback when a coin has no long series.
+export const TIMEFRAMES: ReadonlyArray<{
+  key: Timeframe;
+  label: string;
+  base: TfBase;
+  mult: number;
+  mult5: number;
+}> = [
+  { key: '5m', label: '5m', base: '5m', mult: 1, mult5: 1 },
+  { key: '15m', label: '15m', base: '5m', mult: 3, mult5: 3 },
+  { key: '1h', label: '1H', base: '1h', mult: 1, mult5: 12 },
+  { key: '4h', label: '4H', base: '1h', mult: 4, mult5: 48 },
 ];
