@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   evalStates,
   forward,
@@ -185,26 +185,35 @@ export default function HistoryView({ tab, onTab, onSelect }: Props) {
   const [text, setText] = useState<string | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
 
-  const load = useCallback(async () => {
-    setStatus('loading');
-    try {
-      const res = await fetch(`/recordings?from=${from}&to=${to}`);
-      if (!res.ok) {
-        setStatus(res.status === 413 ? 'error' : 'empty');
-        setText(null);
-        return;
-      }
-      const body = await res.text();
-      setText(body);
-      setStatus(body.trim() ? 'ready' : 'empty');
-    } catch {
-      setStatus('error');
-    }
-  }, [from, to]);
-
+  // Fetch on mount + whenever the range changes. Self-cancelling: if the user
+  // leaves the tab (unmount) or changes the range mid-fetch, the stale response
+  // is ignored (no setState-after-unmount) and the in-flight request is aborted.
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    const ctrl = new AbortController();
+    (async () => {
+      setStatus('loading');
+      try {
+        const res = await fetch(`/recordings?from=${from}&to=${to}`, { signal: ctrl.signal });
+        if (cancelled) return;
+        if (!res.ok) {
+          setStatus(res.status === 413 ? 'error' : 'empty');
+          setText(null);
+          return;
+        }
+        const body = await res.text();
+        if (cancelled) return;
+        setText(body);
+        setStatus(body.trim() ? 'ready' : 'empty');
+      } catch {
+        if (!cancelled) setStatus('error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [from, to]);
 
   const idx = useMemo(() => (text != null ? parseRecordings(text) : null), [text]);
   const results = useMemo(
