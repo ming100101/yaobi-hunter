@@ -523,7 +523,11 @@ function summarize(list: Outcome[]) {
   const n = list.length;
   if (!n) return { n: 0, hitRate: 0, meanMfe: 0, medMfe: 0, meanMae: 0, meanRetH: 0, medRetH: 0 };
   const sorted = (xs: number[]) => [...xs].sort((a, b) => a - b);
-  const med = (xs: number[]) => sorted(xs)[Math.floor(xs.length / 2)];
+  const med = (xs: number[]) => {
+    const s = sorted(xs);
+    const k = s.length;
+    return k % 2 ? s[(k - 1) / 2] : (s[k / 2 - 1] + s[k / 2]) / 2; // avg the two middle for even k
+  };
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
   return {
     n,

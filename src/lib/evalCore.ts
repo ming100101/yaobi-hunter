@@ -160,7 +160,7 @@ export function summarize(xs: Sample[], target: number): StateSummary {
     n,
     hit: xs.filter((x) => x.mfe >= target / 100).length / n,
     meanMfe: mean(xs.map((x) => x.mfe)),
-    medMfe: mfes[Math.floor(n / 2)],
+    medMfe: n % 2 ? mfes[(n - 1) / 2] : (mfes[n / 2 - 1] + mfes[n / 2]) / 2, // avg two middle for even n
     meanRet: mean(xs.map((x) => x.ret)),
   };
 }
