@@ -1,9 +1,19 @@
-import type { CoinLite, ScanProgress, ScanResult, SignalTimes, SignalTimesEntry } from '../types';
+import { useMemo } from 'react';
+import type {
+  CoinLite,
+  Regime,
+  ScanProgress,
+  ScanResult,
+  ScreenerSortDir,
+  ScreenerSortKey,
+  SignalTimes,
+  SignalTimesEntry,
+} from '../types';
 import type { PaperState } from '../lib/paper';
 import BrandMark from './BrandMark';
 import NavTabs, { type AppTab } from './NavTabs';
 import PaperChip from './PaperChip';
-import { RegimeTag } from './RegimeTag';
+import { RegimeTag, REGIME_META } from './RegimeTag';
 import Sparkline from './Sparkline';
 import { fmtAge, fmtClock, fmtMoney, fmtPct, pctSign, strengthCls } from '../lib/format';
 
@@ -14,6 +24,13 @@ interface Props {
   progress: ScanProgress | null;
   fbOnly: boolean;
   onFbToggle: () => void;
+  sortKey: ScreenerSortKey;
+  sortDir: ScreenerSortDir;
+  onSort: (k: ScreenerSortKey) => void;
+  regimeSet: Set<Regime>;
+  onRegimeToggle: (r: Regime) => void;
+  minVol: number;
+  onMinVol: (v: number) => void;
   paper: PaperState | null;
   sigTimes: SignalTimes;
   pinned: Set<string>;
@@ -43,6 +60,37 @@ function fundingCls(f: number): string {
   if (f > 0.03) return 'down';
   if (f < 0) return 'up';
   return 'muted';
+}
+
+// A clickable column header (button semantics + aria-sort). `r` = right-aligned
+// numeric column. The ▼/▲ indicator shows on the active column only.
+function SortHeader({
+  label,
+  k,
+  sortKey,
+  sortDir,
+  onSort,
+  r,
+}: {
+  label: string;
+  k: ScreenerSortKey;
+  sortKey: ScreenerSortKey;
+  sortDir: ScreenerSortDir;
+  onSort: (k: ScreenerSortKey) => void;
+  r?: boolean;
+}) {
+  const active = sortKey === k;
+  return (
+    <span
+      className={r ? 'ta-r' : undefined}
+      aria-sort={active ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'}
+    >
+      <button type="button" className={`sort-h${active ? ' active' : ''}`} onClick={() => onSort(k)}>
+        {label}
+        {active ? <span className="sort-ind">{sortDir === 'desc' ? '▼' : '▲'}</span> : null}
+      </button>
+    </span>
+  );
 }
 
 function Row({
@@ -142,6 +190,13 @@ export default function ScreenerList({
   progress,
   fbOnly,
   onFbToggle,
+  sortKey,
+  sortDir,
+  onSort,
+  regimeSet,
+  onRegimeToggle,
+  minVol,
+  onMinVol,
   paper,
   sigTimes,
   pinned,
@@ -151,14 +206,25 @@ export default function ScreenerList({
   onSelect,
   onRefresh,
 }: Props) {
-  const filtered = fbOnly ? scan.coins.filter((c) => c.flushBreakout) : scan.coins;
-  // pinned coins float to the top; each group keeps its incoming strength order
-  const rows = [
-    ...filtered.filter((c) => pinned.has(c.symbol)),
-    ...filtered.filter((c) => !pinned.has(c.symbol)),
-  ];
+  // filter (⚡/regime/vol compose with AND) → column sort → pinned-first. One
+  // memo so batch updates and sort/filter changes re-order the same way (rows
+  // don't jump differently than today's per-batch re-sort).
+  const rows = useMemo(() => {
+    let list = scan.coins;
+    if (fbOnly) list = list.filter((c) => c.flushBreakout);
+    if (regimeSet.size) list = list.filter((c) => regimeSet.has(c.regime));
+    if (minVol > 0) list = list.filter((c) => c.vol24h >= minVol);
+    const dir = sortDir === 'desc' ? -1 : 1;
+    const sorted = [...list].sort(
+      (a, b) => (a[sortKey] - b[sortKey]) * dir || a.symbol.localeCompare(b.symbol),
+    );
+    return [
+      ...sorted.filter((c) => pinned.has(c.symbol)),
+      ...sorted.filter((c) => !pinned.has(c.symbol)),
+    ];
+  }, [scan.coins, fbOnly, regimeSet, minVol, sortKey, sortDir, pinned]);
   // top-10 by rank in the full (unfiltered) strength-sorted list
-  const top10 = new Set(scan.coins.slice(0, 10).map((c) => c.symbol));
+  const top10 = useMemo(() => new Set(scan.coins.slice(0, 10).map((c) => c.symbol)), [scan.coins]);
 
   return (
     <div className="page">
@@ -181,6 +247,29 @@ export default function ScreenerList({
           >
             ⚡ 縮倉突破
           </button>
+          {(['accumulate', 'pump', 'distribute'] as const).map((rg) => (
+            <button
+              key={rg}
+              type="button"
+              className={`fb-toggle${regimeSet.has(rg) ? ' on' : ''}`}
+              onClick={() => onRegimeToggle(rg)}
+              aria-pressed={regimeSet.has(rg)}
+              title={`只顯示${REGIME_META[rg].label}階段（多選；全部關 = 顯示全部）`}
+            >
+              {REGIME_META[rg].label}
+            </button>
+          ))}
+          <select
+            className="vol-select"
+            value={minVol}
+            onChange={(e) => onMinVol(Number(e.target.value))}
+            title="最低 24h 成交量"
+          >
+            <option value={0}>全部量</option>
+            <option value={5_000_000}>≥$5M</option>
+            <option value={20_000_000}>≥$20M</option>
+            <option value={50_000_000}>≥$50M</option>
+          </select>
           <SourceChip source={scan.source} />
           <PaperChip paper={paper} />
           {/* fixed-width slot, reserved even when idle, so the row never reflows */}
@@ -210,11 +299,11 @@ export default function ScreenerList({
           <span>幣種</span>
           <span>24h</span>
           <span>階段</span>
-          <span>強度</span>
-          <span className="ta-r">1h</span>
-          <span className="ta-r">OI 4h</span>
-          <span className="ta-r">Funding</span>
-          <span className="ta-r">24h 量</span>
+          <SortHeader label="強度" k="strength" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          <SortHeader label="1h" k="change1h" r sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          <SortHeader label="OI 4h" k="oi4h" r sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          <SortHeader label="Funding" k="funding" r sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          <SortHeader label="24h 量" k="vol24h" r sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           <span className="ta-r">風險</span>
         </div>
         {rows.map((c) => (
@@ -228,9 +317,11 @@ export default function ScreenerList({
             onClick={() => onSelect(c.symbol)}
           />
         ))}
-        {fbOnly && rows.length === 0 && (
+        {rows.length === 0 && (
           <div className="sr-empty muted">
-            目前沒有縮倉突破訊號。此訊號稀少屬正常 — 回測 37 日、154 隻幣僅出現 55 次。
+            {fbOnly
+              ? '目前沒有縮倉突破訊號。此訊號稀少屬正常 — 回測 37 日、154 隻幣僅出現 55 次。'
+              : '沒有符合篩選條件的幣。'}
           </div>
         )}
       </div>

@@ -161,6 +161,11 @@ export interface ScanProgress {
   total: number;
 }
 
+// U2 screener sort/filter — state lives in App (survives tab switches), applied
+// in ScreenerList. Sortable columns are the numeric CoinLite fields.
+export type ScreenerSortKey = 'strength' | 'change1h' | 'oi4h' | 'funding' | 'vol24h';
+export type ScreenerSortDir = 'asc' | 'desc';
+
 // a row in the search tab — any listed USDT perp, not just scanned coins
 export interface SearchHit {
   instId: string;

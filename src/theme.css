@@ -651,7 +651,11 @@ body {
 
 /* ---- screener list ---- */
 .table-card {
-  overflow-x: auto;
+  /* bounded so the table scrolls internally and .scr-head can stick to its top
+     (U2). Horizontal scroll still works for the 860px min-width grid. The height
+     is approximate — leaves room for topbar + footer. */
+  overflow: auto;
+  max-height: calc(100vh - 160px);
 }
 
 .scr-head,
@@ -683,6 +687,41 @@ body {
   border-bottom: 1px solid var(--card-edge);
   padding-top: 13px;
   padding-bottom: 11px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card);
+}
+
+/* U2 sortable column headers + volume filter */
+.sort-h {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.sort-h:hover,
+.sort-h.active {
+  color: var(--neon);
+}
+.sort-ind {
+  margin-left: 3px;
+  font-size: 9px;
+}
+.vol-select {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--card-edge);
+  background: rgba(167, 139, 250, 0.07);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .scr-row {

@@ -27,9 +27,19 @@
 - Sort by 1h asc/desc/default cycles correctly with pins still on top; regime chips filter counts sanely; sticky header holds while scrolling 350 rows; `npm run typecheck`.
 
 ## Acceptance
-- [ ] 5 sortable columns, 3-state cycle, pinned-first invariant kept.
-- [ ] Regime + volume filters, persisted (if U1).
-- [ ] Sticky header inside the horizontal-scroll card.
+- [x] 5 sortable columns (強度/1h/OI 4h/Funding/24h量), 3-state cycle, pinned-first invariant kept.
+- [x] Regime (3-chip multi-select) + volume (select) filters. *Persistence deferred to U1* — state lives in App (survives tab switches, resets on full reload).
+- [x] Sticky header inside the (now bounded) scroll card. *(visual tuning of max-height pending browser check)*
+
+## Results — 2026-07-05
+
+- **App.tsx**: `sortKey/sortDir/regimeSet/minVol` state + `cycleSort` (col→desc→asc→default) + `toggleRegime`; threaded to ScreenerList. State in App so it survives settings/strategy tab switches (ScreenerList unmounts on those — early returns App.tsx:441-457).
+- **ScreenerList.tsx**: one `useMemo` pipeline — filter (⚡/regime/minVol, AND) → column sort (numeric field, dir, symbol tiebreak) → pinned-first. `SortHeader` (button + `aria-sort` + ▼/▲). Regime chips reuse `.fb-toggle`; `.vol-select` in the topbar. `top10` still from the strength-sorted `scan.coins` (unaffected by display sort). Generalized empty state.
+- **theme.css**: `.table-card` → `overflow:auto; max-height:calc(100vh-160px)` (bounded so it scrolls internally); `.scr-head` → `position:sticky; top:0; z-index:1; background:var(--card)`; `.sort-h`/`.sort-ind`/`.vol-select`.
+- **types.ts**: `ScreenerSortKey` / `ScreenerSortDir`.
+- **Verified**: `npm run typecheck`; a 14-case logic harness (all 5 sort keys ×2 dirs, filter AND-composition incl. regime multi-select, pinned-first invariant, 3-state cycle) all pass.
+- **Not verified in-browser**: sticky-header hold on scroll, the `max-height` value, topbar crowding, ▼/▲ render — the concurrent dev server holds port 5173 and I didn't touch the shared vite config. The other session's server (same repo) HMR-reloads these edits, so it's live-previewable there.
+- **Deviation from spec step 1/4**: persistence to `settings.screener` is deferred to U1 (not landed) — the spec sanctions "module state only (note it)"; App React state is used.
 
 ## 陷阱 / Do-NOT
 - Do NOT re-sort mid-sweep on every batch update in a way that makes rows jump under the cursor — apply sort in the same memo that already handles batch re-sorting so behaviour stays consistent with today's per-batch updates.

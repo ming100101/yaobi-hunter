@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import type {
   Coin,
   CoinLite,
+  Regime,
   ScanProgress,
   ScanResult,
+  ScreenerSortDir,
+  ScreenerSortKey,
   SignalTimes,
   Timeframe,
 } from './types';
@@ -69,6 +72,31 @@ export default function App() {
   const [loadErr, setLoadErr] = useState<string | undefined>();
   // ⚡ 縮倉突破 filter — show only coins where the backtested trigger is live
   const [fbOnly, setFbOnly] = useState(false);
+  // U2 screener sort/filter (persist to settings deferred to U1 — App state
+  // survives tab switches, resets on full reload).
+  const [sortKey, setSortKey] = useState<ScreenerSortKey>('strength');
+  const [sortDir, setSortDir] = useState<ScreenerSortDir>('desc');
+  const [regimeSet, setRegimeSet] = useState<Set<Regime>>(() => new Set());
+  const [minVol, setMinVol] = useState(0); // USD; 0 = all
+  // click a header: → this column desc → asc → back to default (strength desc)
+  const cycleSort = (key: ScreenerSortKey) => {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir('desc');
+    } else if (sortDir === 'desc') {
+      setSortDir('asc');
+    } else {
+      setSortKey('strength');
+      setSortDir('desc');
+    }
+  };
+  const toggleRegime = (r: Regime) =>
+    setRegimeSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(r)) next.delete(r);
+      else next.add(r);
+      return next;
+    });
 
   // open detail view (full-series coin, fetched on demand)
   const [detail, setDetail] = useState<{ coin: Coin; at: number; origin: AppTab } | null>(null);
@@ -465,6 +493,13 @@ export default function App() {
       progress={progress}
       fbOnly={fbOnly}
       onFbToggle={() => setFbOnly((v) => !v)}
+      sortKey={sortKey}
+      sortDir={sortDir}
+      onSort={cycleSort}
+      regimeSet={regimeSet}
+      onRegimeToggle={toggleRegime}
+      minVol={minVol}
+      onMinVol={setMinVol}
       paper={scan.source === 'okx' ? paper : null}
       sigTimes={sigTimes}
       pinned={pinned}

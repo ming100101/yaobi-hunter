@@ -44,7 +44,7 @@
 | 18 | T1 | 實盤半自動(/confirm 落單) | 4 | M | **M1 一個月正 P&L** | [T1](docs/roadmap/T1-live-semiauto.md) | 🔒 |
 | 19 | T2 | 實盤全自動(硬風控) | 4 | M | **T1 一個月無事故** | [T2](docs/roadmap/T2-live-auto.md) | 🔒 |
 | — | U1 | ⚙️ Settings + 匯出備份 | 支 | S/M | P0 | [U1](docs/roadmap/U1-settings-export.md) | ☐ 隨時 |
-| — | U2 | Screener 排序/篩選/sticky | 支 | S | — | [U2](docs/roadmap/U2-screener-ux.md) | ☐ 隨時 |
+| — | U2 | Screener 排序/篩選/sticky | 支 | S | — | [U2](docs/roadmap/U2-screener-ux.md) | ✅ 2026-07-05 |
 | — | U3 | Help modal + 首次導覽 | 支 | S | — | [U3](docs/roadmap/U3-onboarding.md) | ☐ 隨時 |
 | — | U4 | 幣名旁 24h 走勢縮圖 | 支 | S | — | [U4](docs/roadmap/U4-sparkline.md) | ✅ 2026-07-04 |
 | — | F1 | 🎀 Y2K girly pixel 主題 | 支 | M | P0 | [F1](docs/roadmap/F1-y2k-theme.md) | ☐ 隨時 |
