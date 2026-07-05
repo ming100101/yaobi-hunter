@@ -1,5 +1,6 @@
 import type { Coin, CoinLite, ScanProgress, ScanSource, SearchHit } from '../types';
 import { fetchLiveCoin, runRollingScan, searchInstruments, toLite } from './okx';
+import { runMicroCycle, type MicroResult } from '../lib/microScan';
 import { getBinancePerpBases } from './binanceUniverse';
 import { generateScan } from './mockData';
 import { loadFullCoin, saveFullCoin } from './cache';
@@ -28,6 +29,17 @@ function rememberFull(coin: Coin, at: number) {
 
 export function searchPerps(query: string): Promise<SearchHit[]> {
   return searchInstruments(OKX_BASE, query);
+}
+
+// S3 browser micro-scan cycle — wraps runMicroCycle with the proxy base so App
+// never touches OKX_BASE directly. Warm-only, so it's safe to run every ~75s.
+export function runMicroScan(
+  candidates: string[],
+  curFb: Set<string>,
+  onFire: (c: Coin) => void,
+  nowMs: number,
+): Promise<MicroResult> {
+  return runMicroCycle(OKX_BASE, candidates, curFb, onFire, nowMs);
 }
 
 export interface ScanHandle {

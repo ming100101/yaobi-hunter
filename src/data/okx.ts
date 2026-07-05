@@ -33,12 +33,20 @@ const SPOT_CAND_BUDGET = 30; // S2: max candidate spot-series fetches per sweep 
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// S3: HTTP 429 counter so the micro-scan can back off when throttled (it reads
+// the delta across a cycle). Incremented in okxGet's throttle branch.
+let rate429Count = 0;
+export function get429Count(): number {
+  return rate429Count;
+}
+
 async function okxGet(base: string, path: string, tries = 3): Promise<any[]> {
   let lastErr: unknown;
   for (let k = 0; k < tries; k++) {
     try {
       const res = await fetch(base + path);
       if (res.status === 429 || res.status >= 500) {
+        if (res.status === 429) rate429Count++; // S3 micro-scan backoff signal
         // visible in prod/dev console so a throttle regression isn't silent
         console.warn(`[okx] ${res.status} on ${path} (retry ${k + 1}/${tries})`);
         await sleep(500 * (k + 1));
@@ -56,7 +64,7 @@ async function okxGet(base: string, path: string, tries = 3): Promise<any[]> {
 }
 
 // concurrency-limited map with optional per-worker spacing to respect rate limits
-async function mapPool<T, R>(
+export async function mapPool<T, R>(
   items: T[],
   conc: number,
   fn: (item: T, i: number) => Promise<R>,
@@ -240,6 +248,28 @@ export async function fetchLiveCoin(baseUrl: string, hit: SearchHit, nowMs: numb
     coin.spotTakerBuyShare24h = taker;
   }
   return coin;
+}
+
+// S3 micro-scan: warm-only single-coin fetch. Same candle/funding/analyze path as
+// fetchLiveCoin (so flushBreakout is computed identically), but OI comes from the
+// WARM STORE (getWarmOi) — NEVER rubik — and a cold coin (store empty/stale)
+// returns null so the caller skips it. Do NOT route the detail view through this:
+// its OI would be coarser + up to ~one sweep stale vs the fresh 5m rubik pull.
+export async function fetchLiveCoinWarm(base: string, hit: SearchHit, nowMs: number): Promise<Coin | null> {
+  const warm = getWarmOi(hit.instId, nowMs);
+  if (!warm) return null; // cold — warm store can't serve OI; skip (hard warm-only rule)
+  const tzShift = -new Date(nowMs).getTimezoneOffset() * 60;
+  const { candles, volume, times } = await getCandles(base, hit.instId, tzShift);
+  if (candles.length < MIN_BARS) return null;
+  const oi = resample(
+    times,
+    warm.map((p) => ({ t: p.t + tzShift, v: p.v })),
+  );
+  const fundingHist = await getFunding(base, hit.instId, tzShift, times).catch(
+    () => times.map((t) => ({ time: t, value: 0 })),
+  );
+  const derived = analyze({ candles, volume, oi, fundingHist });
+  return { symbol: hit.base, candles, volume, oi, fundingHist, ...derived, earlyAccum: null };
 }
 
 // Full scan universe: every OKX USDT perp whose base coin also has a Binance

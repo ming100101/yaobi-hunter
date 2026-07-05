@@ -10,7 +10,8 @@ import type {
   SignalTimes,
   Timeframe,
 } from './types';
-import { fetchFullCoin, getCachedFull, startScan } from './data/scan';
+import { fetchFullCoin, getCachedFull, runMicroScan, startScan } from './data/scan';
+import { toLite } from './data/okx';
 import {
   kvGet,
   kvGetFresh,
@@ -52,6 +53,9 @@ const SCAN_ERROR_BACKOFF_MS = 60 * 1000;
 // M1 single-driver window: skip the paper drive if the other process (recorder)
 // drove within this long, so app + recorder never double-drive the same slot.
 const PAPER_DRIVER_TTL = 5 * 60 * 1000;
+// S3 micro-scan: warm-only re-check of top candidates between full sweeps
+const MICRO_MS = 75_000;
+const MICRO_BACKOFF_MS = 10 * 60 * 1000; // double the cadence for this long after a 429
 
 function sortLite(coins: CoinLite[]): CoinLite[] {
   return [...coins].sort(
@@ -111,6 +115,14 @@ export default function App() {
   // when each coin first entered top-10 / first fired ⚡ / first fired 蓄
   const [sigTimes, setSigTimes] = useState<SignalTimes>({});
   const sigTimesRef = useRef<SignalTimes>({});
+  // S3 micro-scan: ⚡ baseline threaded across cycles (reseeded each full sweep);
+  // microRef mirrors fresh scan/pinned so the 75s timer isn't reset every batch.
+  const curFbRef = useRef<Set<string>>(new Set());
+  const microRef = useRef<{ coins: CoinLite[]; pinned: Set<string>; source: ScanResult['source'] }>({
+    coins: [],
+    pinned: new Set(),
+    source: 'okx',
+  });
 
   // M1 paper book (shared with the recorder via kv.json); drives on each
   // completed live sweep and renders as a compact chip in the screener topbar
@@ -258,6 +270,8 @@ export default function App() {
               Object.keys(sigTimesRef.current).filter((s) => sigTimesRef.current[s]?.fb != null),
             );
             updateSignalTimes(coins);
+            // S3: reseed the micro-scan ⚡ baseline from this completed sweep
+            curFbRef.current = new Set(coins.filter((c) => c.flushBreakout).map((c) => c.symbol));
             recordSweep(coins, scanAt);
             drivePaperSweep(coins, scanAt, prevFb);
           }
@@ -385,6 +399,62 @@ export default function App() {
   };
 
   openCoinRef.current = openCoin;
+
+  // S3 micro-scan: every ~75s, warm-only re-check the top candidates for a
+  // mid-slot ⚡ (caught in ~75s instead of up to 14 min). Live-source + visible
+  // tab only; never touches rubik (fetchLiveCoinWarm skips cold coins); does NOT
+  // re-rank the list — onFire only flips the ⚡ flag + notifies + sets the age.
+  microRef.current = { coins: scan?.coins ?? [], pinned, source: scan?.source ?? 'okx' };
+  useEffect(() => {
+    let stopped = false;
+    let backoffUntil = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const onFire = (coin: Coin) => {
+      const sym = coin.symbol;
+      setScan((prev) =>
+        prev
+          ? { ...prev, coins: prev.coins.map((c) => (c.symbol === sym ? { ...c, flushBreakout: true } : c)) }
+          : prev,
+      );
+      void notifyNewSignals([toLite(coin)], (s) => openCoinRef.current(s));
+      if (sigTimesRef.current[sym]?.fb == null) {
+        const now = Date.now();
+        const next: SignalTimes = { ...sigTimesRef.current, [sym]: { ...sigTimesRef.current[sym], fb: now } };
+        sigTimesRef.current = next;
+        setSigTimes(next);
+        void saveSignalTimes(next);
+      }
+    };
+    const run = async () => {
+      if (stopped) return;
+      const { coins, pinned: pins, source } = microRef.current;
+      if (source === 'okx' && document.visibilityState === 'visible' && coins.length) {
+        // pinned ∪ strength top-20 (coins is strength-sorted), cap 25, and skip
+        // the open-detail coin (its 20s poll already covers it).
+        const top20 = coins.slice(0, 20).map((c) => c.symbol);
+        const cands = [...new Set([...pins, ...top20])]
+          .filter((s) => s !== wantDetail.current)
+          .slice(0, 25);
+        if (cands.length) {
+          try {
+            const res = await runMicroScan(cands, curFbRef.current, onFire, Date.now());
+            curFbRef.current = res.nextFb;
+            if (res.checked)
+              console.log(`[micro] checked ${res.checked} cold ${res.skippedCold} fired ${res.fired}`);
+            if (res.saw429) backoffUntil = Date.now() + MICRO_BACKOFF_MS;
+          } catch {
+            /* micro-scan is best-effort */
+          }
+        }
+      }
+      if (!stopped) timer = setTimeout(run, Date.now() < backoffUntil ? MICRO_MS * 2 : MICRO_MS);
+    };
+    timer = setTimeout(run, MICRO_MS);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, []);
 
   const closeDetail = () => {
     wantDetail.current = null;
