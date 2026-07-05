@@ -51,6 +51,12 @@ export interface Coin {
   oiUsd?: number | null; // absolute open interest in USD (bulk snapshot, live scan only)
   spotVol24h?: number | null; // S1: 24h spot USD volume (bulk spot ticker); null if no spot pair
   basisPct?: number | null; // S1: perp/spot basis % = (perpLast/spotLast − 1)×100; null if no spot pair
+  // S2 candidate-tier spot series for the cross-source detectors; present only
+  // when a spot pair exists AND the coin was a spot-fetch candidate this sweep
+  // (or on any coin opened in the detail view). All absent on demo/older coins.
+  spotCandles?: Candle[]; // spot 5m klines (~48h), same shape as perp candles
+  spotVolume?: VolumeBar[]; // spot 5m volume bars aligned to spotCandles (Candle carries no volume; spot-volume-z needs it)
+  spotTakerBuyShare24h?: number | null; // spot taker BUY share over 24h (rubik SPOT taker-volume, ratio-only); null if no spot pair or fetch failed
   flushBreakout: boolean; // backtested 縮倉突破 trigger (analyze.detectFlushBreakout)
   earlyAccum: EarlyAccum | null; // watchlist-tier 早期蓄力 (set by the data layer)
   riskFlags: string[];

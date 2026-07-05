@@ -43,7 +43,7 @@ npm run backtest -- --mode spot-accum --target 15 --horizon 48
 - Backtest commands above produce lift tables; results recorded in this file's PR description AND appended to the bottom of this spec as a dated results block.
 
 ## Acceptance checklist
-- [ ] Spot series fetched for ≤30 candidates/sweep, paced AFTER the OI pool.
+- [x] Spot series fetched for ≤30 candidates/sweep, paced AFTER the OI pool. *(session 1)*
 - [ ] Three detectors implemented, no-op without spot data, demo mode unaffected.
 - [ ] Backtest gate run; UI badges ONLY for passing detectors; failing ones recording-only.
 - [ ] Results block appended to this spec.
@@ -54,3 +54,24 @@ npm run backtest -- --mode spot-accum --target 15 --horizon 48
 - Do NOT ship a badge on intuition — ×1.3 + robustness or it stays recording-only. Write the numbers down.
 - Spot kline pagination: OKX returns newest-first (same as perp, okx.ts:203-240) — reuse the existing reversal logic, don't re-derive.
 - Coins without spot listings must not enter the candidate spot fetch (filter by S1's spot ticker map).
+
+## Results — Session 1 (數據層), 2026-07-05
+
+Data layer only (spec 拆 session 1 = 數據). Steps 1–2 + candidate wiring done; detectors / recording-meta / backtest / gate / UI = session 2. typecheck 過。
+
+**Implemented**
+- `okx.ts` `getSpotCandles(base, ccy, tzShift)` — thin reuse of perp `getCandles` with `${ccy}-USDT` (same pagination + newest-first reversal); null on no-pair / fail.
+- `okx.ts` `getSpotTakerBuyShare24h(base, ccy)` — rubik `taker-volume?instType=SPOT&period=1H`, rows `[ts, sellVol, buyVol]`, `buy/(buy+sell)` over last 24 rows; ratio-only, null on fail.
+- `types.ts` `Coin`: `spotCandles?`, **`spotVolume?`** (spec gap: `Candle` carries no volume but spot-vol-z needs it), `spotTakerBuyShare24h?`.
+- `okx.ts` `fetchLiveCoin` — detail view attaches all three when a spot pair exists.
+- `okx.ts` `runRollingScan` — candidate spot pool AFTER the OI + LS rubik pools (taker shares the rubik budget), conc=2/500ms, cap `SPOT_CAND_BUDGET=30`/sweep. Candidates = 早期蓄力-flagged ∪ prioritized ∪ `strength≥70`, spot-listed only.
+
+**Verified (live OKX, fetchLiveCoin end-to-end)**
+- BTC: spotCandles/spotVolume 576/576, times ascending, OHLC sane, taker buy share 0.490, basis −0.046. 48h spot-vol sum $597M ⇒ ~$298M/24h vs ticker `spotVol24h` $258M — units cross-check ✓.
+- SOL: 576/576, taker 0.493, basis −0.062. ~$53.5M/24h vs ticker $57.8M ✓.
+
+**Honest notes / carried to session 2**
+- "strength top-20 of sweep" is approximated by a per-batch `strength≥70` proxy — the streaming batch loop has no global sweep ranking mid-stream; a true top-20 needs a post-sweep pass (fold into the recording pass in session 2).
+- Candidate spot data attached to the batch `Coin` is currently **dropped at `toLite`** (no consumer until the session-2 detector/recording pass) — the scan makes the fetches but nothing persists them yet. If session 2 is not imminent, consider gating the scan pool to avoid the per-sweep load.
+- `pinned` proper isn't threaded into `runRollingScan`; `priority` (recently-viewed) is used as the pinned-ish seed.
+- Detector 3 (basis-anomaly) needs basis **history** (z-score vs recorded/intra-session basis) → belongs with the R1 recording layer in session 2, not a single-sweep computation.

@@ -27,6 +27,8 @@ const MIN_BARS = 300; // drop freshly-listed coins without enough history
 const BATCH_SIZE = 20; // coins per rolling-scan batch
 const LONG_BARS = 600; // ~25 days of 1H bars for the detail chart's long timeframes
 const LONG_MIN_BARS = 120; // need a few days of 1H history for 1h/4h to be worth it
+const SPOT_CAND_STRENGTH = 70; // S2: spot-fetch a coin if strength ≥ this (proxy for the sweep's strength leaders)
+const SPOT_CAND_BUDGET = 30; // S2: max candidate spot-series fetches per sweep (rubik + candle load guard)
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -223,6 +225,19 @@ export async function fetchLiveCoin(baseUrl: string, hit: SearchHit, nowMs: numb
   const sf = spotFields(candles[candles.length - 1].close, spot.get(hit.base));
   coin.spotVol24h = sf.spotVol24h;
   coin.basisPct = sf.basisPct;
+  // S2: cross-source spot series for the detail view — only when a spot pair
+  // exists (basis non-null ⟺ spot listing). Single coin, so no candidate budget.
+  if (sf.basisPct != null) {
+    const [sc, taker] = await Promise.all([
+      getSpotCandles(baseUrl, hit.base, tzShift),
+      getSpotTakerBuyShare24h(baseUrl, hit.base),
+    ]);
+    if (sc) {
+      coin.spotCandles = sc.candles;
+      coin.spotVolume = sc.volume;
+    }
+    coin.spotTakerBuyShare24h = taker;
+  }
   return coin;
 }
 
@@ -413,6 +428,44 @@ async function getLsDrop24h(base: string, ccy: string): Promise<number | null> {
   }
 }
 
+// S2: a candidate's spot 5m klines (~48h) + volume — the same pagination and
+// newest-first reversal as the perp getCandles, just the spot instId. null when
+// the coin has no spot pair or the fetch fails (caller filters by the spot map).
+async function getSpotCandles(
+  base: string,
+  ccy: string,
+  tzShift: number,
+): Promise<{ candles: Candle[]; volume: VolumeBar[]; times: number[] } | null> {
+  try {
+    return await getCandles(base, `${ccy}-USDT`, tzShift);
+  } catch {
+    return null;
+  }
+}
+
+// S2: spot taker BUY share over the last 24h from rubik taker-volume. Rows are
+// [ts, sellVol, buyVol] newest-first; used ONLY as a ratio (never absolute — the
+// rubik unit is inconsistent across coins, see README). SHARES the rubik budget
+// with OI/LS, so call only for candidates and sequence it after those pools.
+async function getSpotTakerBuyShare24h(base: string, ccy: string): Promise<number | null> {
+  try {
+    const rows = await okxGet(
+      base,
+      `/api/v5/rubik/stat/taker-volume?ccy=${ccy}&instType=SPOT&period=1H`,
+    );
+    let buy = 0;
+    let sell = 0;
+    for (const r of rows.slice(0, 24)) {
+      sell += Number(r[1]) || 0;
+      buy += Number(r[2]) || 0;
+    }
+    const tot = buy + sell;
+    return tot > 0 ? buy / tot : null;
+  } catch {
+    return null;
+  }
+}
+
 // coin's own 24h return from its 5m candles, in %
 function coinRet24h(candles: Candle[]): number | null {
   const n = candles.length;
@@ -542,6 +595,11 @@ export async function runRollingScan(
   let warmCount = 0; // coins served from the OI store (no rubik request)
   let coldCount = 0; // coins that still needed a rubik OI fetch
 
+  // S2: candidate-tier spot fetch — one shared budget across the whole sweep
+  const prioritySet = new Set(priority);
+  let spotBudget = SPOT_CAND_BUDGET;
+  let spotCandFetched = 0;
+
   // one dead symbol must skip that coin, not kill the whole sweep
   const fetchCandles = (slice: Ticker[]) =>
     mapPool(slice, 8, (t) => getCandles(base, t.instId, tzShift).catch(() => null), 40);
@@ -640,6 +698,41 @@ export async function runRollingScan(
       }
     }
 
+    // S2: candidate-tier spot series for the cross-source detectors (recording-
+    // only until the S2 backtest gate; consumed in a later session). Candidates =
+    // 早期蓄力-flagged ∪ prioritized (recently-viewed/pinned) ∪ strength leaders,
+    // that have a spot pair. Fetched AFTER the OI + LS rubik pools (taker-volume
+    // shares the rubik budget) at conc=2/500ms, capped per sweep.
+    const spotCands = batch
+      .filter(
+        (c) =>
+          c.basisPct != null &&
+          (c.earlyAccum != null || prioritySet.has(c.symbol) || c.strength >= SPOT_CAND_STRENGTH),
+      )
+      .slice(0, spotBudget);
+    if (spotCands.length) {
+      const spotData = await mapPool(
+        spotCands,
+        2,
+        (c) =>
+          Promise.all([
+            getSpotCandles(base, c.symbol, tzShift),
+            getSpotTakerBuyShare24h(base, c.symbol),
+          ]),
+        500,
+      );
+      spotCands.forEach((c, k) => {
+        const [sc, taker] = spotData[k];
+        if (sc) {
+          c.spotCandles = sc.candles;
+          c.spotVolume = sc.volume;
+        }
+        c.spotTakerBuyShare24h = taker;
+      });
+      spotBudget -= spotCands.length;
+      spotCandFetched += spotCands.length;
+    }
+
     done += slice.length;
     emitted += batch.length;
     if (!onBatch(batch, { done, total })) {
@@ -650,6 +743,6 @@ export async function runRollingScan(
     }
   }
 
-  console.log(`[scan] OI: ${warmCount} warm (store), ${coldCount} cold (rubik); store holds ${storeSize()} instruments`);
+  console.log(`[scan] OI: ${warmCount} warm (store), ${coldCount} cold (rubik); ${spotCandFetched} spot-candidate fetches; store holds ${storeSize()} instruments`);
   if (emitted === 0) throw new Error('no coins assembled');
 }
