@@ -97,6 +97,11 @@ function Row({
             蓄{t?.ea ? <span className="sig-age">{fmtAge(t.ea)}</span> : null}
           </span>
         )}
+        {c.spotPump && (
+          <span className="sp-badge" title="現貨帶動 — 現貨量Z 驅動的拉升（回測 lift ×1.79），排序參考，非進場訊號">
+            現
+          </span>
+        )}
         {isTop10 && t?.top10 ? (
           <span className="age-chip" title="首次進入強度 TOP 10 至今">
             T10 {fmtAge(t.top10)}

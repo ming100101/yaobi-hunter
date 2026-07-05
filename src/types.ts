@@ -141,6 +141,7 @@ export interface CoinLite {
   oiUsd: number | null; // absolute open interest (USD) from the bulk snapshot; recorder logs this
   flushBreakout: boolean; // backtested 縮倉突破 trigger is live on this coin
   earlyAccum: boolean; // 早期蓄力 watchlist flag
+  spotPump?: boolean; // S2 現貨帶動 (spot-led-pump, backtest lift ×1.79); only on candidate coins with spot data
   riskFlags: string[];
   signals: Signals;
   // recording-v2 feature vector + EA confirmation numbers; optional so demo

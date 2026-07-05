@@ -17,6 +17,7 @@ import {
   featureVector,
 } from '../lib/analyze';
 import { appendSnapshot, getSeries as getWarmOi, hydrate as hydrateOi, storeSize } from './oiStore';
+import { spotPumpFires } from '../lib/interpret';
 
 // Real USDT-perp data from OKX v5. Reachable where Binance/Bybit are geo-blocked.
 // In the browser BASE is the Vite proxy path (/okx); a node dry-run can pass the
@@ -514,6 +515,7 @@ export function toLite(coin: Coin): CoinLite {
     oiUsd: coin.oiUsd ?? null,
     flushBreakout: coin.flushBreakout,
     earlyAccum: !!coin.earlyAccum,
+    spotPump: spotPumpFires(coin), // S2 現貨帶動 — only candidates carry spotCandles; else false
     riskFlags: coin.riskFlags,
     signals: coin.signals,
     // recording-v2 feature vector + EA confirmation numbers (recording.ts logs

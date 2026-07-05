@@ -45,7 +45,7 @@ npm run backtest -- --mode spot-accum --target 15 --horizon 48
 ## Acceptance checklist
 - [x] Spot series fetched for ≤30 candidates/sweep, paced AFTER the OI pool. *(session 1)*
 - [ ] Three detectors implemented, no-op without spot data, demo mode unaffected. *(session 2: 2/3 — spot-led-pump + stealth-spot-accum done; basis-anomaly needs basis history, deferred)*
-- [~] Backtest gate run; UI badges ONLY for passing detectors; failing ones recording-only. *(session 3: gate run — spot-pump PASSES ×1.79 robust, spot-accum FAILS ×0.54 → recording-only. spot-pump UI ship pending owner call: single ~37d window.)*
+- [x] Backtest gate run; UI badges ONLY for passing detectors; failing ones recording-only. *(session 3: spot-pump PASSES ×1.79 → SHIPPED (insight + 現 badge); spot-accum FAILS ×0.54 → recording-only.)*
 - [x] Results block appended to this spec. *(sessions 1–3)*
 
 ## 陷阱 / Do-NOT
@@ -128,6 +128,6 @@ Steps 3 (detectors, 2/3) + 4 (recording meta) done, **recording-only** (`SPOT_SH
 - **spot-accum 唔過**（×0.54,差過 baseline）→ 維持 recording-only。
 - 3-lens 對抗式 skeptic:零 blocker。look-ahead 乾淨（無未來洩漏,baseline apples-to-apples);非 outlier/clustering;保留 pre-registered basis;誠實「排序參考」framing（hit-rate lift 非利潤,meanRet@24h 得 +0.3%);單一 ~37d 窗 = 一個 regime（caveat,final promotion 前想要 forward/live 交叉確認）。
 
-**Ship 決定**：等 owner 拍板（單一 37d 窗上出 live 財務 badge）。`SPOT_SHIPPED` 保持 false 直到決定。若出:spot-pump → 詳情頁 insight（+ optional screener badge),帶 排序參考 caveat;spot-accum 維持 recording-only。
+**Ship 決定（owner 拍板:出）**：spot-pump 已 **SHIPPED** — `SPOT_PUMP_SHIPPED=true`,詳情頁 `spot-led-pump` insight（帶「回測 lift ×1.79,排序參考,非進場訊號」caveat）+ screener 「現」badge（`.sp-badge`,綠 bull tint,`toLite.spotPump` 經 `spotPumpFires` gated,只候選幣有現貨數據先會著)。stealth-spot-accum `SPOT_ACCUM_SHIPPED=false` 維持 recording-only。驗證:typecheck + forced-positive harness（spotPumpFires/toLite.spotPump=true、interpret 出 spot-led-pump bull p8)、平盤 6 幣 negative path 乾淨。browser render 未做（另一 session 佔住 5173,唔郁 shared config)。
 
 **仲未做**：basis-anomaly（第3 detector,需 history);App 側 spotSignals;screener-badge scan 接線（若出）;regime/forward 交叉確認。

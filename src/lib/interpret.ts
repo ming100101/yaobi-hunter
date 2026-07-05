@@ -270,12 +270,13 @@ function buildCtx(coin: Coin): Ctx | null {
   };
 }
 
-// S2 spot cross-source detectors — recording-only until the S2 backtest gate
-// clears (×1.3 lift + robustness). While SPOT_SHIPPED is false they compute for
-// recording (spotSignals) but never surface as a UI Insight. Initial thresholds;
-// the backtest sweeps them. basis-anomaly (the 3rd read) needs basis history and
-// lands with the recording-eval work — not here.
-const SPOT_SHIPPED: boolean = false;
+// S2 spot cross-source detectors. Gated PER detector by the backtest gate
+// (scripts/backtest.ts --mode spot-*): spot-led-pump PASSED and is live;
+// stealth-spot-accum FAILED and stays recording-only. Both are still computed
+// for recording (spotSignals) regardless of these ship flags. basis-anomaly (the
+// 3rd read) needs basis history and lands with the recording-eval work — not here.
+const SPOT_PUMP_SHIPPED = true; // gate: +10%/24h lift ×1.79 — spotVolZ the causal driver (momentum-only ×1.27), robust ±25% (×1.70-1.90), 76/114 coins, look-ahead clean
+const SPOT_ACCUM_SHIPPED = false; // gate: ×0.54 (worse than baseline) — recording-only
 
 // 現貨帶動拉升 — real spot buying leads the perp breakout: price up, OI flat,
 // spot volume spikes, spot not lagging (basis ≤ +0.05%).
@@ -304,14 +305,22 @@ function stealthSpotAccum(c: Ctx): boolean {
 }
 
 // S2: the spot cross-source reads as 0/1 flags for a candidate coin's recorded
-// sweep-meta (spotSignals map: [pump, accum, basis]). Computes regardless of
-// SPOT_SHIPPED — recording-only is the point. basis (idx 2) needs basis history,
+// sweep-meta (spotSignals map: [pump, accum, basis]). Computes regardless of the
+// ship flags — recording-only is the point. basis (idx 2) needs basis history,
 // so it stays 0 until the recording-eval work.
 export function spotSignals(coin: Coin): [0 | 1, 0 | 1, 0 | 1] | null {
   if (coin.spotCandles == null) return null;
   const ctx = buildCtx(coin);
   if (!ctx) return null;
   return [spotLedPump(ctx) ? 1 : 0, stealthSpotAccum(ctx) ? 1 : 0, 0];
+}
+
+// S2: does spot-led-pump fire AND is it shipped? Used by toLite to set the
+// screener-row badge flag, so the badge honours the per-detector gate above.
+export function spotPumpFires(coin: Coin): boolean {
+  if (!SPOT_PUMP_SHIPPED || coin.spotCandles == null) return false;
+  const ctx = buildCtx(coin);
+  return ctx ? spotLedPump(ctx) : false;
 }
 
 // Which candle a given read marks: event reads point at their event bar; every
@@ -510,21 +519,23 @@ const DETECTORS: Detector[] = [
           detail: `價格 4h ${r1(c.ret4h)} 但 OI 幾乎未變（${p1(c.oi4h)}），突破由現貨買盤帶動而非槓桿堆疊，籌碼結構較乾淨。`,
         }
       : null,
-  // S2 現貨帶動拉升 — recording-only until the backtest gate (SPOT_SHIPPED).
+  // S2 現貨帶動拉升 — SHIPPED (gate PASSED, lift ×1.79); gated by SPOT_PUMP_SHIPPED.
   (c) =>
-    SPOT_SHIPPED && spotLedPump(c)
+    SPOT_PUMP_SHIPPED && spotLedPump(c)
       ? {
           id: 'spot-led-pump',
           next: '若基差維持中性或轉負 → 現貨主導續航；若基差走正放闊 → 槓桿接手，結構轉弱。',
           title: '現貨帶動',
           tone: 'bull',
           priority: 8,
-          detail: `價格 4h ${r1(c.ret4h)}、OI 幾乎未動（${p1(c.oi4h)}），但現貨量爆升（量Z ${c.spotVolZ!.toFixed(1)}）且現貨不落後（基差 ${c.basisPct!.toFixed(2)}%），升勢由真實現貨買盤扛住。`,
+          detail:
+            `價格 4h ${r1(c.ret4h)}、OI 幾乎未動（${p1(c.oi4h)}），但現貨量爆升（量Z ${c.spotVolZ!.toFixed(1)}）且現貨不落後（基差 ${c.basisPct!.toFixed(2)}%），升勢由真實現貨買盤扛住。` +
+            `回測（114 幣、37 日）：+10%/24h 命中率 17.3% vs 基準 9.6%（lift ×1.79，現貨量Z 為驅動；純動能僅 ×1.27），僅供排序參考，非進場訊號。`,
         }
       : null,
-  // S2 現貨暗中吸籌 — recording-only until the backtest gate (SPOT_SHIPPED).
+  // S2 現貨暗中吸籌 — recording-only (gate FAILED ×0.54); gated by SPOT_ACCUM_SHIPPED.
   (c) =>
-    SPOT_SHIPPED && stealthSpotAccum(c)
+    SPOT_ACCUM_SHIPPED && stealthSpotAccum(c)
       ? {
           id: 'stealth-spot-accum',
           next: '若之後帶量突破盤整高點 → 升級關注；若現貨量回落至常態 → 吸籌結束。',
