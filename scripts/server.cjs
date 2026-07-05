@@ -231,12 +231,14 @@ function tgDetectChat(token, cb) {
 }
 
 function winToast(title, body, cb) {
+  // SINGLE-quoted here-string (@'...'@): no PowerShell $-/backtick expansion, so a
+  // symbol with $() or ` can't inject. tgEscape still XML-escapes. Keep it @'...'@.
   const ps = `
 [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
 [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-$xml = @"
+$xml = @'
 <toast><visual><binding template='ToastGeneric'><text>${tgEscape(title)}</text><text>${tgEscape(body)}</text></binding></visual></toast>
-"@
+'@
 $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
 $doc.LoadXml($xml)
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('YaobiHunter').Show([Windows.UI.Notifications.ToastNotification]::new($doc))`;

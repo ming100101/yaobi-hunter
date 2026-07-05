@@ -37,12 +37,15 @@ export async function sendTelegram(
 // WinRT toast via PowerShell — no module install. AppId piggybacks on
 // PowerShell's, so it shows even though YaobiHunter isn't a registered app.
 export function sendToast(title: string, body: string): Promise<Channel> {
+  // SINGLE-quoted here-string (@'...'@): PowerShell does NO $-/backtick expansion
+  // inside it, so a coin symbol containing $() or ` can't inject commands. esc()
+  // still XML-escapes for LoadXml. Do NOT switch this back to @"...\"@.
   const ps = `
 [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
 [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-$xml = @"
+$xml = @'
 <toast><visual><binding template='ToastGeneric'><text>${esc(title)}</text><text>${esc(body)}</text></binding></visual></toast>
-"@
+'@
 $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
 $doc.LoadXml($xml)
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('YaobiHunter').Show([Windows.UI.Notifications.ToastNotification]::new($doc))`;
