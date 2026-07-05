@@ -11,6 +11,7 @@
 import { runRollingScan, toLite } from '../src/data/okx';
 import { getBinancePerpBases } from '../src/data/binanceUniverse';
 import { buildScanRecord, buildSweepMeta } from '../src/lib/recording';
+import { spotSignals } from '../src/lib/interpret';
 import { appendRecordLine, recordingsDir } from './recordFile';
 import { readKvFile, writeKvKey, isKilled } from './kvFile';
 import { notifyFlushBreakouts, sendTelegram, sendToast } from './notifyHeadless';
@@ -50,13 +51,20 @@ async function sweepAndRecord(): Promise<void> {
   const now = Date.now();
   if (!bnBases) bnBases = await getBinancePerpBases(BNV);
   const coins: CoinLite[] = [];
+  // S2: per-candidate spot cross-source reads, computed from the FULL Coin (with
+  // .spotCandles) before toLite strips it — recording-only, gated off the UI.
+  const sweepSpot: Record<string, [0 | 1, 0 | 1, 0 | 1]> = {};
   await runRollingScan(OKX, now, bnBases, [], (batch) => {
-    for (const c of batch) coins.push(toLite(c));
+    for (const c of batch) {
+      const sig = spotSignals(c); // null unless the coin was a spot-fetch candidate
+      if (sig) sweepSpot[c.symbol] = sig;
+      coins.push(toLite(c));
+    }
     return true;
   });
   if (!coins.length) throw new Error('no coins assembled');
   const file = appendRecordLine(JSON.stringify(buildScanRecord(coins, now, 'okx')));
-  appendRecordLine(JSON.stringify(buildSweepMeta(coins.length, now, Date.now() - now)));
+  appendRecordLine(JSON.stringify(buildSweepMeta(coins.length, now, Date.now() - now, sweepSpot)));
   const warm = coins.filter((c) => c.oiUsd != null).length;
   console.log(`${new Date(now).toISOString()}  recorded ${coins.length} coins (${warm} with OI) -> ${file}`);
   // paper trading (best-effort — never let it break the loop). Compute the rising

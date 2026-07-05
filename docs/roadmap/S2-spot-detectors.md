@@ -44,7 +44,7 @@ npm run backtest -- --mode spot-accum --target 15 --horizon 48
 
 ## Acceptance checklist
 - [x] Spot series fetched for ≤30 candidates/sweep, paced AFTER the OI pool. *(session 1)*
-- [ ] Three detectors implemented, no-op without spot data, demo mode unaffected.
+- [ ] Three detectors implemented, no-op without spot data, demo mode unaffected. *(session 2: 2/3 — spot-led-pump + stealth-spot-accum done; basis-anomaly needs basis history, deferred)*
 - [ ] Backtest gate run; UI badges ONLY for passing detectors; failing ones recording-only.
 - [ ] Results block appended to this spec.
 
@@ -75,3 +75,27 @@ Data layer only (spec 拆 session 1 = 數據). Steps 1–2 + candidate wiring do
 - Candidate spot data attached to the batch `Coin` is currently **dropped at `toLite`** (no consumer until the session-2 detector/recording pass) — the scan makes the fetches but nothing persists them yet. If session 2 is not imminent, consider gating the scan pool to avoid the per-sweep load.
 - `pinned` proper isn't threaded into `runRollingScan`; `priority` (recently-viewed) is used as the pinned-ish seed.
 - Detector 3 (basis-anomaly) needs basis **history** (z-score vs recorded/intra-session basis) → belongs with the R1 recording layer in session 2, not a single-sweep computation.
+
+## Results — Session 2 (detectors + recording), 2026-07-05
+
+Steps 3 (detectors, 2/3) + 4 (recording meta) done, **recording-only** (`SPOT_SHIPPED=false`). Backtest `--spot` mode + gate + UI = session 3. typecheck 過。3-lens 對抗式覆核全部 **CONFIRMED**（predicate 數學/單位、gating+null-safety+demo、recording 接線+backward-compat+scope；zero issues）。
+
+**Detectors (`interpret.ts`)**
+- `buildCtx` +4 spot 欄位: `spotVolZ` (15m spot 量 z vs 前 24h，同 perp volZ 數學), `spotVolRatio` (近8h 均量 / 前40h 均量), `basisPct`, `spotBuyShare` — 全部 null 除非候選帶 spotCandles/spotVolume（demo/純永續 no-op）。
+- `spotLedPump`: `ret4h≥0.02 ∧ |oi4h|<1.5 ∧ spotVolZ≥2 ∧ basisPct≤0.05`。
+- `stealthSpotAccum`: `|ret4h|<0.01 ∧ spotVolRatio≥1.5 ∧ spotBuyShare≥0.55 ∧ |oi4h|<2`。
+- `SPOT_SHIPPED=false` gates 兩個 DETECTORS entry（過 gate 先出 UI；spot-led-breakout 舊估版暫時保留）。
+- export `spotSignals(coin)` → `[pump01, accum01, basis01]`；basis01 恒為 0（需 basis history，留 session 3）。
+
+**Recording (`recording.ts` + `recorder.ts`, App.tsx 唔使改)**
+- `SweepMeta` 加 optional `spotSignals?: Record<sym, [0|1,0|1,0|1]>`；`buildSweepMeta` 加 optional 第4參數（backward-compatible）。
+- `recorder.ts` onBatch: 由 full `Coin`（有 spotCandles）喺 `toLite` 之前算 `spotSignals`，per-sweep map 入 `buildSweepMeta`。App 只有 CoinLite → App 側 spotSignals 留 session 3（需 scan.ts 穿 full Coin；recorder 係 24/7 主來源已覆蓋）。
+
+**Verified (live OKX)**
+- `spotSignals(BTC/SOL/DOGE)` = `[0,0,0]`（平盤,冇 pump/accum;DOGE buyShare 0.442<0.55），無 throw、非 null（都有 576 spotCandles）。
+- `buildSweepMeta` 正確 embed：`{"type":"sweep-meta",…,"spotSignals":{"BTC":[0,0,0],…}}`。
+- `recorder --once` 撞到 `KILL file present`（24/7 recorder kill switch 開住）→ 未出到真 sweep line;上面 plumbing check 行同一條 code path。resume 先會錄到（yaobi-resume.cmd）。
+
+**Carried to session 3**
+- `backtest.ts --spot` mode (`spot-pump`/`spot-accum`) + `--spot-volz`/`--spot-basis`/`--spot-buyshare` flags + v3 cache bump + 跑 gate（×1.3 lift + ±25% robustness）。過 gate 先 flip `SPOT_SHIPPED` + 出 badge/insight。
+- basis-anomaly（第3 detector）+ App 側 spotSignals。

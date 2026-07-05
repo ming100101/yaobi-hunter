@@ -58,6 +58,11 @@ interface Ctx {
   crossTime: number; // the EMA20×EMA50 cross bar (0 if none)
   upWickTime: number; // the max-upper-wick bar in the last 4
   lowWickTime: number; // the max-lower-wick bar in the last 4
+  // ---- S2 spot cross-source metrics; null unless a candidate spot series is attached ----
+  spotVolZ: number | null; // z of 15m spot volume vs its prior 24h
+  spotVolRatio: number | null; // spot vol last-8h mean / prior-40h mean
+  basisPct: number | null; // perp/spot basis % (from Coin.basisPct)
+  spotBuyShare: number | null; // spot taker buy share over 24h (from Coin.spotTakerBuyShare24h)
 }
 
 // funding formatted at 3 decimals, percents at sensible precision
@@ -196,6 +201,36 @@ function buildCtx(coin: Coin): Ctx | null {
   const avgRange24h =
     win.reduce((a, c) => a + (c.high - c.low), 0) / Math.max(1, win.length);
 
+  // S2 spot cross-source metrics — computed only when a candidate spot series is
+  // attached (spotCandles/spotVolume from okx.ts). null on demo/older coins and
+  // pure-perp listings, so the spot detectors no-op there. Aggregated to 15m to
+  // match the perp volZ math above (same window: prior 24h / last-8h vs 40h).
+  let spotVolZ: number | null = null;
+  let spotVolRatio: number | null = null;
+  if (coin.spotCandles && coin.spotVolume && coin.spotCandles.length >= 60) {
+    const sc15 = aggregateCandles(coin.spotCandles, 3);
+    const sv15 = aggregateVolume(coin.spotVolume, sc15, 3);
+    const sVols = sv15.map((v) => v.value);
+    const sm = sVols.length;
+    if (sm >= 96) {
+      const sPrior = sVols.slice(sm - 97, sm - 1);
+      const sMean = sPrior.reduce((a, b) => a + b, 0) / Math.max(1, sPrior.length);
+      const sSd = Math.sqrt(
+        sPrior.reduce((a, b) => a + (b - sMean) ** 2, 0) / Math.max(1, sPrior.length),
+      );
+      spotVolZ = sSd > 0 ? (sVols[sm - 1] - sMean) / sSd : 0;
+    }
+    if (sm >= 192) {
+      const recent8h = sVols.slice(sm - 32);
+      const prior40h = sVols.slice(sm - 192, sm - 32);
+      const rMean = recent8h.reduce((a, b) => a + b, 0) / 32;
+      const pMean = prior40h.reduce((a, b) => a + b, 0) / 160;
+      spotVolRatio = pMean > 0 ? rMean / pMean : null;
+    }
+  }
+  const basisPct = coin.basisPct ?? null;
+  const spotBuyShare = coin.spotTakerBuyShare24h ?? null;
+
   return {
     last,
     change1h,
@@ -228,7 +263,55 @@ function buildCtx(coin: Coin): Ctx | null {
     crossTime,
     upWickTime,
     lowWickTime,
+    spotVolZ,
+    spotVolRatio,
+    basisPct,
+    spotBuyShare,
   };
+}
+
+// S2 spot cross-source detectors — recording-only until the S2 backtest gate
+// clears (×1.3 lift + robustness). While SPOT_SHIPPED is false they compute for
+// recording (spotSignals) but never surface as a UI Insight. Initial thresholds;
+// the backtest sweeps them. basis-anomaly (the 3rd read) needs basis history and
+// lands with the recording-eval work — not here.
+const SPOT_SHIPPED: boolean = false;
+
+// 現貨帶動拉升 — real spot buying leads the perp breakout: price up, OI flat,
+// spot volume spikes, spot not lagging (basis ≤ +0.05%).
+function spotLedPump(c: Ctx): boolean {
+  return (
+    c.spotVolZ != null &&
+    c.basisPct != null &&
+    c.ret4h >= 0.02 &&
+    Math.abs(c.oi4h) < 1.5 &&
+    c.spotVolZ >= 2 &&
+    c.basisPct <= 0.05
+  );
+}
+
+// 現貨暗中吸籌 — sustained spot volume + buy-share while price is flat and
+// leverage is quiet: the earlier-than-蓄 accumulation candidate.
+function stealthSpotAccum(c: Ctx): boolean {
+  return (
+    c.spotVolRatio != null &&
+    c.spotBuyShare != null &&
+    Math.abs(c.ret4h) < 0.01 &&
+    c.spotVolRatio >= 1.5 &&
+    c.spotBuyShare >= 0.55 &&
+    Math.abs(c.oi4h) < 2
+  );
+}
+
+// S2: the spot cross-source reads as 0/1 flags for a candidate coin's recorded
+// sweep-meta (spotSignals map: [pump, accum, basis]). Computes regardless of
+// SPOT_SHIPPED — recording-only is the point. basis (idx 2) needs basis history,
+// so it stays 0 until the recording-eval work.
+export function spotSignals(coin: Coin): [0 | 1, 0 | 1, 0 | 1] | null {
+  if (coin.spotCandles == null) return null;
+  const ctx = buildCtx(coin);
+  if (!ctx) return null;
+  return [spotLedPump(ctx) ? 1 : 0, stealthSpotAccum(ctx) ? 1 : 0, 0];
 }
 
 // Which candle a given read marks: event reads point at their event bar; every
@@ -425,6 +508,30 @@ const DETECTORS: Detector[] = [
           tone: 'bull',
           priority: 5,
           detail: `價格 4h ${r1(c.ret4h)} 但 OI 幾乎未變（${p1(c.oi4h)}），突破由現貨買盤帶動而非槓桿堆疊，籌碼結構較乾淨。`,
+        }
+      : null,
+  // S2 現貨帶動拉升 — recording-only until the backtest gate (SPOT_SHIPPED).
+  (c) =>
+    SPOT_SHIPPED && spotLedPump(c)
+      ? {
+          id: 'spot-led-pump',
+          next: '若基差維持中性或轉負 → 現貨主導續航；若基差走正放闊 → 槓桿接手，結構轉弱。',
+          title: '現貨帶動',
+          tone: 'bull',
+          priority: 8,
+          detail: `價格 4h ${r1(c.ret4h)}、OI 幾乎未動（${p1(c.oi4h)}），但現貨量爆升（量Z ${c.spotVolZ!.toFixed(1)}）且現貨不落後（基差 ${c.basisPct!.toFixed(2)}%），升勢由真實現貨買盤扛住。`,
+        }
+      : null,
+  // S2 現貨暗中吸籌 — recording-only until the backtest gate (SPOT_SHIPPED).
+  (c) =>
+    SPOT_SHIPPED && stealthSpotAccum(c)
+      ? {
+          id: 'stealth-spot-accum',
+          next: '若之後帶量突破盤整高點 → 升級關注；若現貨量回落至常態 → 吸籌結束。',
+          title: '現貨吸籌',
+          tone: 'info',
+          priority: 6,
+          detail: `價格橫盤（4h ${r1(c.ret4h)}）但現貨量持續放大（近8h 均量達前40h 的 ${c.spotVolRatio!.toFixed(1)}×）、主動買盤佔 ${(c.spotBuyShare! * 100).toFixed(0)}%，而槓桿靜止（OI ${p1(c.oi4h)}），疑似現貨暗中吸籌。`,
         }
       : null,
 

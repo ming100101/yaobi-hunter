@@ -58,6 +58,10 @@ export interface SweepMeta {
   ts: number;
   coins: number; // coin count in the sweep
   durationMs: number; // wall time of the sweep
+  // S2: per-candidate spot cross-source reads [pump, accum, basis01] (0/1).
+  // basis01 stays 0 until the recording-eval work. Present only on sweeps the
+  // headless recorder writes — the browser writer has only CoinLite, no spot series.
+  spotSignals?: Record<string, [0 | 1, 0 | 1, 0 | 1]>;
 }
 
 export const REC_SLOT_MS = 15 * 60 * 1000;
@@ -112,8 +116,13 @@ export function recCoinField(row: RecCoin, idx: number): number | null {
   return row.length > idx ? (row[idx] as number | null) : null;
 }
 
-export function buildSweepMeta(coinCount: number, tsMs: number, durationMs: number): SweepMeta {
-  return {
+export function buildSweepMeta(
+  coinCount: number,
+  tsMs: number,
+  durationMs: number,
+  spotSignals?: Record<string, [0 | 1, 0 | 1, 0 | 1]>,
+): SweepMeta {
+  const meta: SweepMeta = {
     type: 'sweep-meta',
     v: 2,
     slot: Math.floor(tsMs / REC_SLOT_MS),
@@ -121,4 +130,6 @@ export function buildSweepMeta(coinCount: number, tsMs: number, durationMs: numb
     coins: coinCount,
     durationMs,
   };
+  if (spotSignals && Object.keys(spotSignals).length) meta.spotSignals = spotSignals;
+  return meta;
 }
