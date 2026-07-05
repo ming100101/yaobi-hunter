@@ -35,6 +35,7 @@ import CoinDetail from './components/CoinDetail';
 import SearchBar from './components/SearchBar';
 import SettingsView from './components/SettingsView';
 import StrategyView from './components/StrategyView';
+import HistoryView from './components/HistoryView';
 import BrandMark from './components/BrandMark';
 import type { AppTab } from './components/NavTabs';
 
@@ -549,6 +550,15 @@ export default function App() {
     return (
       <>
         <StrategyView tab={tab} onTab={switchTab} />
+        {searchOverlay}
+      </>
+    );
+  }
+
+  if (tab === 'history') {
+    return (
+      <>
+        <HistoryView tab={tab} onTab={switchTab} onSelect={openCoin} />
         {searchOverlay}
       </>
     );

@@ -33,7 +33,7 @@
 | 7 | S5 | 跨源聯合解讀(已錄現貨欄位量 lift) | 2 | S | S1 | [S5](docs/roadmap/S5-cross-interpret.md) | ✅ 2026-07-05 |
 | 8 | S2 | 現貨拉盤三 detector(backtest-gated) | 2 | M | S1 | [S2](docs/roadmap/S2-spot-detectors.md) | ✅ 2026-07-05 (2/3;現貨帶動 shipped ×1.79) |
 | 9 | S3 | Micro-scan(候選幣 75s 複查) | 2 | S | R2 | [S3](docs/roadmap/S3-micro-scan.md) | ✅ 2026-07-05 |
-| 10 | M2 | 記錄/回測 tab(日誌+lift+回放+replay) | 3 | L | R1,M1(M3 已備 endpoint/evalCore) | [M2](docs/roadmap/M2-history-tab.md) | ☐ |
+| 10 | M2 | 記錄/回測 tab(日誌+lift+回放+replay) | 3 | L | R1,M1(M3 已備 endpoint/evalCore) | [M2](docs/roadmap/M2-history-tab.md) | ◐ S1 2026-07-05(日誌+lift;scrubber/paper/replay 待) |
 | 11 | S4a | 常規 LS ratio 收集 | 2 | S | R1 | [S4a](docs/roadmap/S4a-routine-ls.md) | ☐ |
 | 12 | S4b | Orderbook 失衡記錄 | 2 | S/M | R1 | [S4b](docs/roadmap/S4b-orderbook.md) | ☐ |
 | 13 | S4c | WS 大單監察(pinned 幣) | 2 | M | R2 | [S4c](docs/roadmap/S4c-ws-trades.md) | ☐ |

@@ -42,10 +42,27 @@
 5. Paper panel matches the topbar chip's equity.
 
 ## Acceptance checklist
-- [ ] `/recordings` endpoint in BOTH server.cjs and vite; range-capped.
-- [ ] evalCore shared by CLI and UI; CLI table byte-identical.
-- [ ] Journal / lift / scrubber / paper / replay all functional on real recordings.
-- [ ] Replay honestly labeled: feature-level 重跑,唔係完整序列回測 (tooltip text: 「基於已記錄特徵,非完整K線重算」).
+- [x] `/recordings` endpoint in BOTH server.cjs and vite; range-capped. *(already landed with M3)*
+- [x] evalCore shared by CLI and UI; CLI table byte-identical. *(verified: eval-rec JSON + table diff = IDENTICAL post-extraction)*
+- [~] Journal / lift / scrubber / paper / replay all functional on real recordings. *(session 1: journal + lift done; scrubber / paper / replay = session 2)*
+- [ ] Replay honestly labeled: feature-level 重跑,唔係完整序列回測. *(session 2 — replay panel deferred)*
+
+## Results — Session 1 (evalCore extraction + journal + lift), 2026-07-05
+
+M2's endpoint (Step 1) was already built by M3 (`/recordings` in vite.config.ts + server.cjs, `recordingsServe.ts`, range-capped 92d). This session did the **evalCore extraction (Step 2)** + the **記錄 tab with SignalJournal + LiftTable** (Steps 3–4, partial). Scrubber / paper / replay (Steps 4–5 remainder) = session 2. typecheck passes. 2-lens adversarial review (extraction fidelity, UI wiring/honest-stats/scope) — both **CONFIRMED**, zero issues.
+
+**evalCore (Step 2)** — moved `forward` / `summarize` / `evalStates` / `runEval` + `H4/H24` + result types out of `eval-recordings.ts` into `src/lib/evalCore.ts` (browser-safe). `summarize` now takes `target` as a param; `evalStates(idx)` is a factory (top10 reads `idx.top10At`). CLI slimmed to `{ dir, ...runEval(idx, target) }`. **Byte-identical verified**: `npm run eval-rec --json` and the human table both diff IDENTICAL before/after — ONE implementation, no drift.
+
+**記錄 tab** (`HistoryView.tsx`, `NavTabs` +記錄, `App` history route) —
+- **LiftTable**: `runEval` states × {4h, 24h} hit/lift/meanMFE vs baseline (baseline ×1.00); `< 20` events → 「樣本不足」.
+- **SignalJournal**: ⚡/蓄 rising edges + forward +1h/+4h/+24h + MFE24h (via `forward`); row-click → coin detail (`onSelect`→`openCoin`); null forward windows → 「—」; capped at 250 rows with a count note.
+- Date-range picker (default 14d), status states (loading/empty/error incl. 413), non-advice footer.
+
+**Verified (node harness on real recordings, 108 slots)** — LiftTable numbers (`strength≥70` ×4.66, `top10` ×1.77, baseline 24h 1.6%; ⚡/蓄/organic flagged 樣本不足) match the byte-identical CLI; SignalJournal built 22 ⚡/蓄 events with correct forward returns + null-window handling.
+
+**Not verified in-browser**: the actual render of the two tables (port 5173 held by a concurrent dev server; shared vite config untouched). Data is proven correct; the tables reuse existing `.card`/grid patterns.
+
+**Session 2 (remaining)**: TimelineScrubber (slot slider → top-10 time machine), PaperPanel (equity curve from `paper-state`), ReplayPanel (feature-predicate builder → custom-state lift, honestly labeled feature-level).
 
 ## 陷阱 / Do-NOT
 - Do NOT rewrite the eval math in the UI — ONE implementation (evalCore) or the CLI and tab will drift and produce two different truths.

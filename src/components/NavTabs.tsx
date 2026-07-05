@@ -1,4 +1,4 @@
-export type AppTab = 'scan' | 'search' | 'strategy' | 'settings';
+export type AppTab = 'scan' | 'search' | 'strategy' | 'history' | 'settings';
 
 export default function NavTabs({ tab, onTab }: { tab: AppTab; onTab: (t: AppTab) => void }) {
   return (
@@ -29,6 +29,15 @@ export default function NavTabs({ tab, onTab }: { tab: AppTab; onTab: (t: AppTab
         onClick={() => onTab('strategy')}
       >
         策略
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={tab === 'history'}
+        className={`nav-tab${tab === 'history' ? ' active' : ''}`}
+        onClick={() => onTab('history')}
+      >
+        記錄
       </button>
       <button
         type="button"
