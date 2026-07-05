@@ -117,6 +117,11 @@ export async function notifyFlushBreakouts(
       await sendToast(`⚡ 縮倉突破 — ${c.symbol}/USDT`, `強度 ${c.strength} · 1h ${c.change1h.toFixed(2)}%`);
     }
   }
-  if (changed) writeKvKey(CD_KEY, notified);
+  if (changed) {
+    // prune coins past their cooldown — they no longer suppress a re-notify, so
+    // dropping them keeps this map bounded instead of growing once per coin forever.
+    for (const s in notified) if (now - notified[s] >= cooldownMs) delete notified[s];
+    writeKvKey(CD_KEY, notified);
+  }
   return curFb;
 }

@@ -55,5 +55,10 @@ export async function notifyNewSignals(
       /* Notification constructor can fail in embedded webviews */
     }
   }
-  if (changed) void kvSet(STORE_KEY, notified);
+  if (changed) {
+    // prune coins past their cooldown — they no longer suppress anything, so
+    // forgetting them keeps the map bounded to ~the last COOLDOWN window.
+    for (const s in notified) if (now - notified[s] >= COOLDOWN_MS) delete notified[s];
+    void kvSet(STORE_KEY, notified);
+  }
 }
