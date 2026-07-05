@@ -39,7 +39,7 @@ const DATA_DIR = path.join(ROOT, 'backtest-data');
 
 // ---------------------------------------------------------------- CLI args
 interface Args {
-  mode: 'setup' | 'breakout';
+  mode: 'setup' | 'breakout' | 'spot-pump' | 'spot-accum';
   refresh: boolean;
   json: boolean;
   pnl: boolean; // --pnl: print equal-weight LONG/SHORT P&L from the signal set
@@ -62,6 +62,11 @@ interface Args {
   takerShare: number; // require taker BUY share over the base window ≥ this (e.g. 0.53)
   lsDrop: number; // require long/short account ratio to have dropped ≥ this % over the base window
   rsMin: number | null; // require coin-vs-BTC relative return (%) over the base window ≥ this
+  // ---- S2 spot-detector params (modes spot-pump / spot-accum) ----
+  spotVolz: number; // spot-pump: spot-volume z (24h window) ≥ this
+  spotBasis: number; // spot-pump: perp/spot basis % ≤ this (spot not lagging)
+  spotBuyshare: number; // spot-accum: spot taker BUY share (last 24h) ≥ this
+  spotRatio: number; // spot-accum: spot-vol last-8h mean / prior-40h mean ≥ this
 }
 
 function parseArgs(): Args {
@@ -88,6 +93,10 @@ function parseArgs(): Args {
     takerShare: 0,
     lsDrop: 0,
     rsMin: null,
+    spotVolz: 2,
+    spotBasis: 0.05,
+    spotBuyshare: 0.55,
+    spotRatio: 1.5,
   };
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
@@ -99,7 +108,8 @@ function parseArgs(): Args {
     };
     if (k === '--mode') {
       i++;
-      if (v !== 'setup' && v !== 'breakout') throw new Error(`bad --mode ${v}`);
+      if (v !== 'setup' && v !== 'breakout' && v !== 'spot-pump' && v !== 'spot-accum')
+        throw new Error(`bad --mode ${v}`);
       a.mode = v;
     } else if (k === '--refresh') a.refresh = true;
     else if (k === '--json') a.json = true;
@@ -122,6 +132,10 @@ function parseArgs(): Args {
     else if (k === '--taker-share') a.takerShare = num();
     else if (k === '--ls-drop') a.lsDrop = num();
     else if (k === '--rs-min') a.rsMin = num();
+    else if (k === '--spot-volz') a.spotVolz = num();
+    else if (k === '--spot-basis') a.spotBasis = num();
+    else if (k === '--spot-buyshare') a.spotBuyshare = num();
+    else if (k === '--spot-ratio') a.spotRatio = num();
     else throw new Error(`unknown arg ${k}`);
   }
   return a;
@@ -160,7 +174,7 @@ interface Bar {
 }
 
 // bump when the cached shape changes — older cache entries are refetched
-const DATA_VERSION = 2;
+const DATA_VERSION = 3; // v3: optional spot series for the S2 spot-* modes
 
 interface CoinData {
   version?: number;
@@ -173,6 +187,12 @@ interface CoinData {
   takerBuy: number[]; // taker BUY volume per bar (rubik, aligned)
   takerSell: number[]; // taker SELL volume per bar
   lsRatio: number[]; // long/short account ratio, aligned (step)
+  // ---- S2 spot series (present only when fetched in a spot-* mode and a spot
+  // pair exists); aligned to bars. Absent → coin skipped in spot modes. ----
+  spotClose?: number[]; // spot close aligned to bars
+  spotVol?: number[]; // spot USDT-notional volume aligned to bars
+  spotTakerBuy?: number[]; // spot taker BUY volume aligned (rubik SPOT)
+  spotTakerSell?: number[]; // spot taker SELL volume aligned
   fetchedAt: number;
 }
 
@@ -215,7 +235,12 @@ function alignSeries(bars: Bar[], src: Array<{ t: number; v: number }>): number[
   return out;
 }
 
-async function fetchCoin(symbol: string, instId: string, vol24hUsd: number): Promise<CoinData | null> {
+async function fetchCoin(
+  symbol: string,
+  instId: string,
+  vol24hUsd: number,
+  spotMode: boolean,
+): Promise<CoinData | null> {
   const bars = await fetch1hCandles(instId);
   if (bars.length < 200) return null; // too newly listed for a 30d test
   const oiRows = await okxGet(`/api/v5/rubik/stat/contracts/open-interest-volume?ccy=${symbol}&period=1H`).catch(
@@ -254,6 +279,31 @@ async function fetchCoin(symbol: string, instId: string, vol24hUsd: number): Pro
     bars,
     lsRows.map((r: any) => ({ t: Number(r[0]), v: Number(r[1]) })).filter((p: any) => Number.isFinite(p.v)),
   );
+
+  // S2 spot series — only in spot-* modes, and only if a spot pair exists.
+  let spotClose: number[] | undefined;
+  let spotVol: number[] | undefined;
+  let spotTakerBuy: number[] | undefined;
+  let spotTakerSell: number[] | undefined;
+  if (spotMode) {
+    const spotBars = await fetch1hCandles(`${symbol}-USDT`).catch(() => [] as Bar[]);
+    if (spotBars.length) {
+      spotClose = alignSeries(bars, spotBars.map((b) => ({ t: b.t, v: b.c })));
+      spotVol = alignSeries(bars, spotBars.map((b) => ({ t: b.t, v: b.v })));
+      // rubik taker-volume SPOT: [ts, sellVol, buyVol]; ratio-only (README caveat)
+      const spotTakerRows = await okxGet(
+        `/api/v5/rubik/stat/taker-volume?ccy=${symbol}&instType=SPOT&period=1H`,
+      ).catch(() => []);
+      spotTakerSell = alignSeries(
+        bars,
+        spotTakerRows.map((r: any) => ({ t: Number(r[0]), v: Number(r[1]) })).filter((p: any) => Number.isFinite(p.v)),
+      );
+      spotTakerBuy = alignSeries(
+        bars,
+        spotTakerRows.map((r: any) => ({ t: Number(r[0]), v: Number(r[2]) })).filter((p: any) => Number.isFinite(p.v)),
+      );
+    }
+  }
   return {
     version: DATA_VERSION,
     symbol,
@@ -265,12 +315,17 @@ async function fetchCoin(symbol: string, instId: string, vol24hUsd: number): Pro
     takerBuy,
     takerSell,
     lsRatio,
+    spotClose,
+    spotVol,
+    spotTakerBuy,
+    spotTakerSell,
     fetchedAt: Date.now(),
   };
 }
 
 async function loadUniverse(args: Args): Promise<CoinData[]> {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+  const spotMode = args.mode === 'spot-pump' || args.mode === 'spot-accum';
   const bn = await getBinancePerpBases(BNV);
   const tickers = await okxGet('/api/v5/market/tickers?instType=SWAP');
   const list: Array<{ symbol: string; instId: string; vol: number }> = [];
@@ -295,8 +350,13 @@ async function loadUniverse(args: Args): Promise<CoinData[]> {
     if (!args.refresh && fs.existsSync(file)) {
       try {
         const cached = JSON.parse(fs.readFileSync(file, 'utf8')) as CoinData;
-        // version gate: cache entries from before the taker/ls fields refetch
-        if (cached.version === DATA_VERSION && Date.now() - cached.fetchedAt < args.cacheHours * 3600_000) {
+        // version gate: cache entries from before the taker/ls fields refetch;
+        // spot modes additionally require the spot series to be present.
+        if (
+          cached.version === DATA_VERSION &&
+          Date.now() - cached.fetchedAt < args.cacheHours * 3600_000 &&
+          (!spotMode || cached.spotClose != null)
+        ) {
           data = cached;
         }
       } catch {
@@ -304,7 +364,7 @@ async function loadUniverse(args: Args): Promise<CoinData[]> {
       }
     }
     if (!data) {
-      data = await fetchCoin(item.symbol, item.instId, item.vol).catch(() => null);
+      data = await fetchCoin(item.symbol, item.instId, item.vol, spotMode).catch(() => null);
       if (data) fs.writeFileSync(file, JSON.stringify(data));
       await sleep(450); // rubik OI is strictly rate-limited
       fetched++;
@@ -330,6 +390,7 @@ function volZAt(bars: Bar[], i: number): number {
 }
 
 function signalAt(d: CoinData, i: number, a: Args, btcClose: Map<number, number>): boolean {
+  if (a.mode === 'spot-pump' || a.mode === 'spot-accum') return spotSignalAt(d, i, a);
   const { bars, oi, funding } = d;
   // OI flush: current OI well below its recent lookback high
   let oiMax = 0;
@@ -381,6 +442,56 @@ function signalAt(d: CoinData, i: number, a: Args, btcClose: Map<number, number>
     if (volZAt(d.bars, i) < a.volz) return false;
   }
   return true;
+}
+
+// S2 spot cross-source signals reconstructed on the 1H historical series. The
+// live detector runs on 15m — same windows measured in hours, coarser bars, so
+// this is an approximation (eval ≠ live), exactly like ⚡'s 1H reconstruction.
+function spotVolZAt(sv: number[], i: number): number | null {
+  const win = sv.slice(Math.max(0, i - 24), i); // prior 24h, excluding bar i
+  if (win.length < 8) return null;
+  const m = win.reduce((a, b) => a + b, 0) / win.length;
+  const sd = Math.sqrt(win.reduce((a, b) => a + (b - m) ** 2, 0) / win.length);
+  return sd > 0 ? (sv[i] - m) / sd : 0;
+}
+
+function spotSignalAt(d: CoinData, i: number, a: Args): boolean {
+  const { bars, oi } = d;
+  if (!d.spotClose || !d.spotVol) return false;
+  if (i < 4 || !(bars[i - 4].c > 0) || !(oi[i - 4] > 0)) return false;
+  const ret4h = bars[i].c / bars[i - 4].c - 1; // fraction
+  const oi4h = (oi[i] / oi[i - 4] - 1) * 100; // percent
+  const sc = d.spotClose[i];
+  if (!(sc > 0) || !(bars[i].c > 0)) return false;
+  const basisPct = (bars[i].c / sc - 1) * 100; // perp/spot basis %
+
+  if (a.mode === 'spot-pump') {
+    const z = spotVolZAt(d.spotVol, i);
+    if (z == null) return false;
+    return ret4h >= 0.02 && Math.abs(oi4h) < 1.5 && z >= a.spotVolz && basisPct <= a.spotBasis;
+  }
+
+  // spot-accum: spot volume last-8h mean vs prior-40h mean + spot taker buy share
+  if (i < 48) return false;
+  const sv = d.spotVol;
+  const recent8 = sv.slice(i - 8, i);
+  const prior40 = sv.slice(i - 48, i - 8);
+  const rMean = recent8.reduce((a, b) => a + b, 0) / recent8.length;
+  const pMean = prior40.reduce((a, b) => a + b, 0) / prior40.length;
+  if (!(pMean > 0)) return false;
+  const ratio = rMean / pMean;
+  let buy = 0;
+  let sell = 0;
+  for (let j = i - 24; j < i; j++) {
+    buy += d.spotTakerBuy?.[j] ?? 0;
+    sell += d.spotTakerSell?.[j] ?? 0;
+  }
+  const tot = buy + sell;
+  if (!(tot > 0)) return false;
+  const buyShare = buy / tot;
+  return (
+    Math.abs(ret4h) < 0.01 && ratio >= a.spotRatio && buyShare >= a.spotBuyshare && Math.abs(oi4h) < 2
+  );
 }
 
 // ---------------------------------------------------------------- metrics
@@ -453,12 +564,14 @@ if (args.rsMin !== null) {
 }
 
 const warmup = Math.max(args.flushHours, args.baseHours) + 2;
+const spotMode = args.mode === 'spot-pump' || args.mode === 'spot-accum';
 const signals: Outcome[] = [];
 const baseline: Outcome[] = [];
 const perCoin = new Map<string, number>();
 let barsEvaluated = 0;
 
 for (const d of coins) {
+  if (spotMode && !d.spotClose) continue; // spot modes: only spot-listed coins in signal + baseline
   const lastEval = d.bars.length - args.horizon - 1;
   let cooldownUntil = -1;
   for (let i = warmup; i <= lastEval; i++) {
@@ -525,15 +638,26 @@ if (args.json) {
 } else {
   const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
   console.log('');
-  console.log(`=== OI-flush+basing backtest — mode=${args.mode} ===`);
+  const title = spotMode ? 'S2 spot cross-source backtest' : 'OI-flush+basing backtest';
+  console.log(`=== ${title} — mode=${args.mode} ===`);
   console.log(
     `universe ${coins.length} coins ($${(args.minVol / 1e6).toFixed(0)}M-$${(args.maxVol / 1e6).toFixed(0)}M) · ~${spanDays}d @1H · ${barsEvaluated.toLocaleString()} bars`,
   );
-  console.log(
-    `signal: flush≥${args.flushPct}%/${args.flushHours}h, base≤${args.baseRange}%/${args.baseHours}h, |funding|≤${args.neutralFunding}%` +
-      (args.inflectHours ? `, OI↑${args.inflectHours}h` : '') +
-      (args.mode === 'breakout' ? `, breakout+volZ≥${args.volz}` : ''),
-  );
+  if (args.mode === 'spot-pump') {
+    console.log(
+      `signal: spot-led-pump — ret4h≥2%, |oi4h|<1.5%, spotVolZ≥${args.spotVolz}, basis≤${args.spotBasis}%`,
+    );
+  } else if (args.mode === 'spot-accum') {
+    console.log(
+      `signal: stealth-spot-accum — |ret4h|<1%, spotVol 8h/40h≥${args.spotRatio}, spotBuyShare≥${args.spotBuyshare}, |oi4h|<2%`,
+    );
+  } else {
+    console.log(
+      `signal: flush≥${args.flushPct}%/${args.flushHours}h, base≤${args.baseRange}%/${args.baseHours}h, |funding|≤${args.neutralFunding}%` +
+        (args.inflectHours ? `, OI↑${args.inflectHours}h` : '') +
+        (args.mode === 'breakout' ? `, breakout+volZ≥${args.volz}` : ''),
+    );
+  }
   console.log(`outcome: MFE ≥ +${args.target}% within ${args.horizon}h`);
   const extras: string[] = [];
   if (args.takerShare > 0) extras.push(`takerBuyShare≥${args.takerShare}`);

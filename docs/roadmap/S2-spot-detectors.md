@@ -45,8 +45,8 @@ npm run backtest -- --mode spot-accum --target 15 --horizon 48
 ## Acceptance checklist
 - [x] Spot series fetched for ≤30 candidates/sweep, paced AFTER the OI pool. *(session 1)*
 - [ ] Three detectors implemented, no-op without spot data, demo mode unaffected. *(session 2: 2/3 — spot-led-pump + stealth-spot-accum done; basis-anomaly needs basis history, deferred)*
-- [ ] Backtest gate run; UI badges ONLY for passing detectors; failing ones recording-only.
-- [ ] Results block appended to this spec.
+- [~] Backtest gate run; UI badges ONLY for passing detectors; failing ones recording-only. *(session 3: gate run — spot-pump PASSES ×1.79 robust, spot-accum FAILS ×0.54 → recording-only. spot-pump UI ship pending owner call: single ~37d window.)*
+- [x] Results block appended to this spec. *(sessions 1–3)*
 
 ## 陷阱 / Do-NOT
 - rubik 5req/2s is SHARED with the OI cold path — never run the spot-taker pool concurrently with the OI pool (sequence them), and keep conc=2/500ms.
@@ -99,3 +99,35 @@ Steps 3 (detectors, 2/3) + 4 (recording meta) done, **recording-only** (`SPOT_SH
 **Carried to session 3**
 - `backtest.ts --spot` mode (`spot-pump`/`spot-accum`) + `--spot-volz`/`--spot-basis`/`--spot-buyshare` flags + v3 cache bump + 跑 gate（×1.3 lift + ±25% robustness）。過 gate 先 flip `SPOT_SHIPPED` + 出 badge/insight。
 - basis-anomaly（第3 detector）+ App 側 spotSignals。
+
+## Results — Session 3 (backtest `--spot` mode + gate), 2026-07-05
+
+`backtest.ts` 加 modes `spot-pump`/`spot-accum` + flags `--spot-volz`/`--spot-basis`/`--spot-buyshare`/`--spot-ratio` + v3 cache（optional spot 1H series: spotClose/spotVol/spotTaker）。喺 1H 歷史 series 重構讀法（eval ≠ live 15m,同窗以小時計,粗 bar）。typecheck 過。
+
+**Gate（full universe, 114 spot-listed 幣, ~37d @1H）**
+| mode | signals | hit | base | lift | coins firing |
+|---|---|---|---|---|---|
+| spot-pump (t10/h24) | 463 | 17.3% | 9.6% | **×1.79** | 76/114 |
+| spot-accum (t10/h24) | 174 | 5.2% | 9.6% | ×0.54 | 58/114 |
+| spot-accum (t15/h48) | 169 | 4.7% | 9.3% | ×0.51 | 58/114 |
+
+**Robustness ±25%（spot-pump）**: volz1.5 ×1.70 · volz2.5 ×1.90 · basis0.0375 ×1.77 · basis0.0625 ×1.80 — 全部 > ×1.15 floor。✓
+
+**Ablation（×1.61 教訓 — 係現貨定純動能?）**
+| variant | lift | meanRet@24h |
+|---|---|---|
+| full (spotVolZ≥2 + basis≤0.05) | ×1.79 | +0.3% |
+| momentum-only (ret4h+oi4h) | ×1.27 | −0.7% |
+| +spotVolZ≥2 only | ×1.83 | +0.4% |
+| +basis≤0.05 only | ×1.24 | −0.7% |
+
+→ **spotVolZ 係因果驅動**（純動能過唔到 gate 且負期望）;basis inert 但 pre-registered → 保留（唔准睇完結果先落）。
+
+**判定**
+- **spot-pump 過 gate**：×1.79 ≥ ×1.3,±25% robust（×1.70–1.90),現貨數據驅動（非動能/selection-noise),廣度 76/114,正期望。比被否嘅 ×1.61 更強更穩。
+- **spot-accum 唔過**（×0.54,差過 baseline）→ 維持 recording-only。
+- 3-lens 對抗式 skeptic:零 blocker。look-ahead 乾淨（無未來洩漏,baseline apples-to-apples);非 outlier/clustering;保留 pre-registered basis;誠實「排序參考」framing（hit-rate lift 非利潤,meanRet@24h 得 +0.3%);單一 ~37d 窗 = 一個 regime（caveat,final promotion 前想要 forward/live 交叉確認）。
+
+**Ship 決定**：等 owner 拍板（單一 37d 窗上出 live 財務 badge）。`SPOT_SHIPPED` 保持 false 直到決定。若出:spot-pump → 詳情頁 insight（+ optional screener badge),帶 排序參考 caveat;spot-accum 維持 recording-only。
+
+**仲未做**：basis-anomaly（第3 detector,需 history);App 側 spotSignals;screener-badge scan 接線（若出）;regime/forward 交叉確認。
