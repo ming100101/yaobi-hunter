@@ -17,10 +17,14 @@ import {
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
   type LineWidth,
+  type SeriesMarker,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import { STRENGTH_THRESHOLD, TIMEFRAMES, type Coin, type SeriesPoint, type Timeframe } from '../types';
+import { STRENGTH_THRESHOLD, TIMEFRAMES, type Candle, type Coin, type SeriesPoint, type Timeframe } from '../types';
+import type { PaperAction, PaperLedgerRow } from '../lib/paper';
+import type { Insight } from '../lib/interpret';
+import { signalColor } from '../lib/signalColors';
 import { cssVar } from '../lib/cssVar';
 import { ChartSync } from '../lib/chartSync';
 import { bollinger, ema } from '../lib/indicators';
@@ -71,6 +75,89 @@ function baseOptions(showTime: boolean): DeepPartial<ChartOptions> {
 
 function toLine(points: SeriesPoint[]) {
   return points.map((d) => ({ time: d.time as UTCTimestamp, value: d.value }));
+}
+
+// zh-TW label for the sell (close) side of a paper fill; open is 買.
+const SELL_LABEL: Record<Exclude<PaperAction, 'open'>, string> = {
+  tp1: 'TP1',
+  tp2: 'TP2',
+  tp3: 'TP3',
+  sl: '止損',
+  timeout: '逾時',
+};
+
+// Turn this coin's paper fills into candle markers: 開倉 = green up-triangle
+// below the bar (buy), every close (TP/SL/timeout) = red down-triangle above the
+// bar (sell). Each fill's ms timestamp is snapped to the bar it falls in (bars
+// are labeled by bucket-open time in unix seconds); fills before the loaded
+// window have no bar and are dropped ("if applicable"). Markers must be sorted
+// ascending by time for lightweight-charts.
+function paperMarkers(candles: Candle[], fills: PaperLedgerRow[]): SeriesMarker<UTCTimestamp>[] {
+  if (candles.length === 0 || fills.length === 0) return [];
+  const times = candles.map((c) => c.time); // ascending, unix seconds
+  const first = times[0];
+  const barFor = (tsSec: number): number | null => {
+    if (tsSec < first) return null; // older than the visible window
+    let lo = 0;
+    let hi = times.length - 1;
+    let res = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (times[mid] <= tsSec) {
+        res = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return times[res];
+  };
+  const markers: SeriesMarker<UTCTimestamp>[] = [];
+  for (const f of fills) {
+    const bar = barFor(Math.floor(f.ts / 1000));
+    if (bar == null) continue;
+    if (f.action === 'open') {
+      markers.push({ time: bar as UTCTimestamp, position: 'belowBar', color: cssVar('--up'), shape: 'arrowUp', text: `買 ${fmtPrice(f.px)}`, size: 1 });
+    } else {
+      markers.push({ time: bar as UTCTimestamp, position: 'aboveBar', color: cssVar('--down'), shape: 'arrowDown', text: SELL_LABEL[f.action], size: 1 });
+    }
+  }
+  markers.sort((a, b) => (a.time as number) - (b.time as number));
+  return markers;
+}
+
+// Signal Read markers: one coloured circle above the anchor candle per insight,
+// colour = its display-order index (same colour as the Signal Read list dot), so
+// a read and its candle are visually tied. Text = the read's short tag.
+function insightMarkers(candles: Candle[], insights: Insight[]): SeriesMarker<UTCTimestamp>[] {
+  if (candles.length === 0 || insights.length === 0) return [];
+  const times = candles.map((c) => c.time);
+  const first = times[0];
+  const barFor = (tsSec: number): number | null => {
+    if (tsSec < first) return null; // older than the loaded window
+    let lo = 0;
+    let hi = times.length - 1;
+    let res = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (times[mid] <= tsSec) {
+        res = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return times[res];
+  };
+  const markers: SeriesMarker<UTCTimestamp>[] = [];
+  insights.forEach((ins, i) => {
+    if (ins.atTime == null) return;
+    const bar = barFor(ins.atTime);
+    if (bar == null) return;
+    markers.push({ time: bar as UTCTimestamp, position: 'aboveBar', color: signalColor(i), shape: 'circle', text: ins.title, size: 1 });
+  });
+  markers.sort((a, b) => (a.time as number) - (b.time as number));
+  return markers;
 }
 
 function initialRange(chart: IChartApi, bars: number) {
@@ -151,6 +238,8 @@ interface PriceState {
   bbUpper: ISeriesApi<'Line'>;
   bbLower: ISeriesApi<'Line'>;
   entryLine: IPriceLine;
+  markers: ISeriesMarkersPluginApi<Time>;
+  insightMarkers: ISeriesMarkersPluginApi<Time>;
   legendEl: HTMLDivElement | null;
   lastBar: OhlcBar | null;
   unregister: () => void;
@@ -175,7 +264,14 @@ export function PricePanel({
   sync,
   tf,
   onTf,
-}: PanelProps & { tf: Timeframe; onTf: (t: Timeframe) => void }) {
+  fills = [],
+  insights = [],
+}: PanelProps & {
+  tf: Timeframe;
+  onTf: (t: Timeframe) => void;
+  fills?: PaperLedgerRow[];
+  insights?: Insight[];
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const legendRef = useRef<HTMLDivElement>(null);
   const state = useRef<PriceState | null>(null);
@@ -230,6 +326,10 @@ export function PricePanel({
       axisLabelVisible: true,
       title: '進場',
     });
+    // paper-trade fills (arrows) and Signal Read markers (coloured circles) —
+    // two independent marker layers, both populated by the data effect
+    const markers = createSeriesMarkers(candle, []);
+    const insightMarkers = createSeriesMarkers(candle, []);
 
     const unregister = sync.register({ chart, series: candle });
     state.current = {
@@ -241,6 +341,8 @@ export function PricePanel({
       bbUpper,
       bbLower,
       entryLine,
+      markers,
+      insightMarkers,
       legendEl: legendRef.current,
       lastBar: null,
       unregister,
@@ -290,11 +392,13 @@ export function PricePanel({
       price: coin.plan.entry,
       title: coin.plan.kind === 'breakout' ? '突破' : coin.plan.kind === 'pullback' ? '回調' : '收復',
     });
+    st.markers.setMarkers(paperMarkers(coin.candles, fills));
+    st.insightMarkers.setMarkers(insightMarkers(coin.candles, insights));
     const last = coin.candles[coin.candles.length - 1];
     st.lastBar = { open: last.open, high: last.high, low: last.low, close: last.close };
     renderOhlcLegend(st.legendEl, st.lastBar);
     if (tfChanged()) initialRange(st.chart, coin.candles.length);
-  }, [coin, tfChanged]);
+  }, [coin, fills, insights, tfChanged]);
 
   const last = coin.candles[coin.candles.length - 1].close;
   const dirCls = pctSign(coin.change1h) >= 0 ? 'up-badge' : 'down-badge';

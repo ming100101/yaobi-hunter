@@ -21,6 +21,8 @@ export interface Insight {
   detail: string; // interpretation with live numbers baked in
   tone: InsightTone;
   priority: number; // 1-10, higher = shown first
+  atTime?: number; // anchor candle time (unix seconds) — the bar this read marks
+  next?: string; // conditional watch-point:「若後續 A → 行動 B;若 A' → 失效」(heuristic, not advice)
 }
 
 interface Ctx {
@@ -51,6 +53,11 @@ interface Ctx {
   capBarStrongClose: boolean; // the max-lower-wick bar closed in its upper half
   rangeLast: number;
   avgRange24h: number;
+  // anchor times (unix seconds) for marking the corresponding candle on the chart
+  lastTime: number; // latest analyzed bar — the detection moment for state reads
+  crossTime: number; // the EMA20×EMA50 cross bar (0 if none)
+  upWickTime: number; // the max-upper-wick bar in the last 4
+  lowWickTime: number; // the max-lower-wick bar in the last 4
 }
 
 // funding formatted at 3 decimals, percents at sensible precision
@@ -129,11 +136,17 @@ function buildCtx(coin: Coin): Ctx | null {
   const emaAbove20 = last > e20Last;
   const emaAbove50 = last > e50Last;
   let crossRecent: -1 | 0 | 1 = 0;
+  let crossTime = 0;
   for (let j = M - 8; j < M; j++) {
     const dPrev = (e20At(j - 1) ?? 0) - (e50At(j - 1) ?? 0);
     const dCur = (e20At(j) ?? 0) - (e50At(j) ?? 0);
-    if (dPrev <= 0 && dCur > 0) crossRecent = 1;
-    else if (dPrev >= 0 && dCur < 0) crossRecent = -1;
+    if (dPrev <= 0 && dCur > 0) {
+      crossRecent = 1;
+      crossTime = c15[j].time;
+    } else if (dPrev >= 0 && dCur < 0) {
+      crossRecent = -1;
+      crossTime = c15[j].time;
+    }
   }
   let recentBelowEma20 = false;
   for (let j = Math.max(19, M - 8); j < M - 1; j++) {
@@ -160,6 +173,8 @@ function buildCtx(coin: Coin): Ctx | null {
   let lowerWick4 = 0;
   let upthrustBarRed = false;
   let capBarStrongClose = false;
+  let upWickTime = 0;
+  let lowWickTime = 0;
   for (const c of c15.slice(M - 4)) {
     const range = c.high - c.low;
     if (range <= 0) continue;
@@ -168,10 +183,12 @@ function buildCtx(coin: Coin): Ctx | null {
     if (uw > upperWick4) {
       upperWick4 = uw;
       upthrustBarRed = c.close <= c.open;
+      upWickTime = c.time;
     }
     if (lw > lowerWick4) {
       lowerWick4 = lw;
       capBarStrongClose = c.close > c.low + 0.5 * range;
+      lowWickTime = c.time;
     }
   }
   const lastBar = c15[M - 1];
@@ -207,7 +224,20 @@ function buildCtx(coin: Coin): Ctx | null {
     capBarStrongClose,
     rangeLast,
     avgRange24h,
+    lastTime: lastBar.time,
+    crossTime,
+    upWickTime,
+    lowWickTime,
   };
+}
+
+// Which candle a given read marks: event reads point at their event bar; every
+// other (state) read points at the latest analyzed bar — the moment it fired.
+function anchorTime(id: string, ctx: Ctx): number {
+  if (id === 'ema-golden-cross' || id === 'ema-death-cross') return ctx.crossTime || ctx.lastTime;
+  if (id === 'upthrust-rejection') return ctx.upWickTime || ctx.lastTime;
+  if (id === 'capitulation-wick') return ctx.lowWickTime || ctx.lastTime;
+  return ctx.lastTime;
 }
 
 type Detector = (c: Ctx) => Insight | null;
@@ -219,6 +249,7 @@ const DETECTORS: Detector[] = [
     c.f8h >= 0.008 && c.fNow >= 0 && c.fNow <= 0.003 && c.fNow < c.f8h * 0.6 && c.ret4h > -0.01 && c.change1h > -1
       ? {
           id: 'funding-cooling',
+          next: '若價續守穩、費率維持低位 → 回檔至 EMA20 係留意位；若費率急速回升而價滯漲 → 降溫失效，提防再過熱。',
           title: '資金降溫',
           tone: 'bull',
           priority: 7,
@@ -230,6 +261,7 @@ const DETECTORS: Detector[] = [
     c.f8h > 0 && c.fNow < -0.001 && c.ret4h > -0.005
       ? {
           id: 'funding-flip-negative',
+          next: '若價格放量上攻 → 軋空啟動，可依出場計畫追蹤；若跌破近期低點 → 空方主導，訊號失效。',
           title: '費率轉負',
           tone: 'bull',
           priority: 8,
@@ -241,6 +273,7 @@ const DETECTORS: Detector[] = [
     c.fNow >= 0.015 && c.fNow > c.f8h && c.f8h > c.f24h && c.oi4h > 3
       ? {
           id: 'funding-overheat',
+          next: '若價格滯漲或轉跌 → 提防多殺多，宜先減倉、收緊停損；若費率回落且價守穩 → 風險解除。',
           title: '資金過熱',
           tone: 'warn',
           priority: 9,
@@ -252,6 +285,7 @@ const DETECTORS: Detector[] = [
     c.fNow <= -0.005 && c.f8h <= -0.002 && c.ret4h >= 0.02 && c.ret24h > 0
       ? {
           id: 'disbelief-rally',
+          next: '若費率仍負而價續創高 → 軋空未完，以持有為主；若費率轉正 → 軋空燃料耗盡，留意動能衰竭。',
           title: '軋空行情',
           tone: 'bull',
           priority: 8,
@@ -263,6 +297,7 @@ const DETECTORS: Detector[] = [
     c.fNow >= 0.006 && c.oi4h > -1 && c.ret4h <= -0.02 && c.change1h < -0.5
       ? {
           id: 'long-trap',
+          next: '若跌破近期支撐 → 連環平倉風險，LONG ONLY 宜離場觀望；若放量收復失地且費率降溫 → 陷阱解除。',
           title: '多頭陷阱',
           tone: 'bear',
           priority: 7,
@@ -274,6 +309,7 @@ const DETECTORS: Detector[] = [
     c.fNow <= -0.02 && c.f24h > c.fNow && c.ret24h < 0.03
       ? {
           id: 'extreme-negative-funding',
+          next: '若價止跌回升 → 軋空反轉啟動，可小注試探；若續破低 → 接刀風險，等企穩再講。',
           title: '極端負費率',
           tone: 'bull',
           priority: 6,
@@ -287,6 +323,7 @@ const DETECTORS: Detector[] = [
     c.fNow > 0 && c.fNow <= 0.008 && c.fNow >= c.f8h && c.oi4h >= 2 && c.ret4h >= 0.015 && c.pos > 0.6
       ? {
           id: 'double-confirmation',
+          next: '若回檔至 EMA20 不破 → 分批進場機會；若 OI 掉頭下降或費率急升過熱 → 確認失效，收緊停損。',
           title: '雙重確認',
           tone: 'bull',
           priority: 9,
@@ -299,6 +336,7 @@ const DETECTORS: Detector[] = [
     !(c.fNow > 0 && c.fNow <= 0.008 && c.fNow >= c.f8h && c.pos > 0.6)
       ? {
           id: 'oi-up-price-up',
+          next: '若量能與 OI 同步續增 → 趨勢延續，回檔係機會；若價滯漲而 OI 續升 → 轉為擁擠，提防甩尾。',
           title: '增倉上漲',
           tone: 'bull',
           priority: 6,
@@ -310,6 +348,7 @@ const DETECTORS: Detector[] = [
     c.oi4h >= 2 && c.ret4h <= -0.015
       ? {
           id: 'oi-up-price-down',
+          next: '若跌勢放緩且 OI 轉降 → 空頭回補反彈可期；若續增倉續跌 → 賣壓未完，勿接刀。',
           title: '增倉下跌',
           tone: 'bear',
           priority: 7,
@@ -321,6 +360,7 @@ const DETECTORS: Detector[] = [
     c.oi4h <= -2 && c.ret4h >= 0.015
       ? {
           id: 'oi-down-price-up',
+          next: '若之後 OI 轉增且量能放大 → 升級為真趨勢，可再評估；若量縮價滯 → 回補近尾聲，勿追高。',
           title: '減倉上漲',
           tone: 'info',
           priority: 4,
@@ -332,6 +372,7 @@ const DETECTORS: Detector[] = [
     c.oi4h <= -2 && c.ret4h <= -0.015
       ? {
           id: 'oi-down-price-down',
+          next: '若 OI 止跌且低位出現長下影 → 出清近尾聲，留意築底型態；若續減倉續跌 → 繼續觀望。',
           title: '減倉下跌',
           tone: 'bear',
           priority: 5,
@@ -343,6 +384,7 @@ const DETECTORS: Detector[] = [
     c.oi4h >= 3 && c.oi4h < 8 && Math.abs(c.change1h) < 0.5 && Math.abs(c.ret4h) < 0.008 && c.pos > 0.3 && c.pos < 0.7
       ? {
           id: 'oi-coil',
+          next: '若放量向上突破盤整區 → 順向跟進（留意 ⚡ 觸發）；若向下破位 → LONG ONLY 迴避。',
           title: '持倉盤整',
           tone: 'info',
           priority: 6,
@@ -354,6 +396,7 @@ const DETECTORS: Detector[] = [
     c.oi4h >= 8 && Math.abs(c.ret4h) < 0.025
       ? {
           id: 'oi-spike',
+          next: '若價急拉後回落 → 提防雙向插針，勿追價；若價穩步消化增倉 → 風險下降，再觀察。',
           title: '持倉暴增',
           tone: 'warn',
           priority: 7,
@@ -365,6 +408,7 @@ const DETECTORS: Detector[] = [
     c.priceNewHigh24h && c.oi4h <= -1.5
       ? {
           id: 'oi-divergence-high',
+          next: '若跌回前高之下 → 假突破確認，宜退出；若 OI 回升跟上價格 → 背離解除。',
           title: '新高背離',
           tone: 'warn',
           priority: 8,
@@ -376,6 +420,7 @@ const DETECTORS: Detector[] = [
     c.ret4h >= 0.02 && Math.abs(c.oi4h) < 1.5 && c.buyShare4h > 0.55 && c.volZ > 1
       ? {
           id: 'spot-led-breakout',
+          next: '若回測突破位不破 → 進場機會（現貨主導結構較耐震）；若跌回突破位下 → 假突破，離場。',
           title: '現貨帶動',
           tone: 'bull',
           priority: 5,
@@ -389,6 +434,7 @@ const DETECTORS: Detector[] = [
     c.volZ >= 2 && c.pos < 0.4 && c.change1h >= 1.5 && c.ret4h > 0
       ? {
           id: 'volume-ignition',
+          next: '若下一根續放量收高 → 啟動確認，可依計畫評估進場；若量退價回 → 一次性脈衝，觀望。',
           title: '量能啟動',
           tone: 'bull',
           priority: 8,
@@ -400,6 +446,7 @@ const DETECTORS: Detector[] = [
     c.volZ >= 2.5 && c.pos > 0.85 && c.ret4h > 0.03 && c.rangeLast >= 1.5 * c.avgRange24h
       ? {
           id: 'volume-climax',
+          next: '若隨後出現長上影或滯漲 → 行情尾段，分批止盈；若有量續強 → 可續持但停損要跟上。',
           title: '量能高潮',
           tone: 'warn',
           priority: 9,
@@ -412,6 +459,7 @@ const DETECTORS: Detector[] = [
     !(c.volZ >= 2.5 && c.ret4h > 0.03)
       ? {
           id: 'absorption-stall',
+          next: '若放量仍推唔郁 → 賣壓佔優，宜減倉；若吸收完成後放量上破 → 轉為突破訊號，再評估。',
           title: '高位滯漲',
           tone: 'warn',
           priority: 7,
@@ -423,6 +471,7 @@ const DETECTORS: Detector[] = [
     c.bbPctile <= 0.1 && c.volZ <= -0.3 && Math.abs(c.change1h) < 0.8
       ? {
           id: 'volatility-squeeze',
+          next: '若放量向上突破 → 跟進突破方向（留意 ⚡）；若向下破位 → LONG ONLY 迴避，等回穩。',
           title: '波動壓縮',
           tone: 'info',
           priority: 6,
@@ -434,6 +483,7 @@ const DETECTORS: Detector[] = [
     c.crossRecent === 1
       ? {
           id: 'ema-golden-cross',
+          next: '若回踩 EMA20 不破 → 順勢佈局位；若跌回 EMA50 之下 → 假交叉，訊號失效。',
           title: '均線多排',
           tone: 'bull',
           priority: 7,
@@ -444,6 +494,7 @@ const DETECTORS: Detector[] = [
     c.crossRecent === -1
       ? {
           id: 'ema-death-cross',
+          next: 'LONG ONLY 宜觀望；若重新站回 EMA20/EMA50 之上 → 空排解除，再重新評估。',
           title: '均線空排',
           tone: 'bear',
           priority: 7,
@@ -455,6 +506,7 @@ const DETECTORS: Detector[] = [
     c.brokeHigh24h && c.volZ >= 1.8 && c.buyShare4h > 0.55
       ? {
           id: 'breakout-confirmed',
+          next: '若回測前高不破 → 屬加碼位；若跌回盤整區內 → 假突破，依停損紀律離場。',
           title: '放量突破',
           tone: 'bull',
           priority: 9,
@@ -465,6 +517,7 @@ const DETECTORS: Detector[] = [
     c.brokeHigh24h && c.volZ < 0.8
       ? {
           id: 'breakout-thin',
+          next: '若補量續漲 → 升級為有效突破；若無量滯漲 → 等回測確認先好講，勿追。',
           title: '縮量突破',
           tone: 'warn',
           priority: 6,
@@ -476,6 +529,7 @@ const DETECTORS: Detector[] = [
     c.pos > 0.85 && c.upperWick4 >= 0.55 && c.volZ >= 1.5 && c.ret4h < 0.015 && c.upthrustBarRed
       ? {
           id: 'upthrust-rejection',
+          next: '若再測高點無力（更低高點）→ 短線見頂訊號，宜先止盈；若放量收復影線高點 → 拒絕失效。',
           title: '上影拒絕',
           tone: 'bear',
           priority: 8,
@@ -487,6 +541,7 @@ const DETECTORS: Detector[] = [
     c.pos < 0.15 && c.lowerWick4 >= 0.55 && c.volZ >= 2 && c.capBarStrongClose
       ? {
           id: 'capitulation-wick',
+          next: '若守住下影低點且賣壓量縮 → 築底訊號，可留意反轉進場位；若再破低 → 洗盤變趨勢，離場。',
           title: '恐慌洗盤',
           tone: 'bull',
           priority: 8,
@@ -498,6 +553,7 @@ const DETECTORS: Detector[] = [
     c.buyShare4h > 0.6 && c.ret4h <= 0.005 && c.ret4h >= -0.01 && c.pos < 0.85
       ? {
           id: 'buy-pressure-divergence',
+          next: '若價格向上脫離平台 → 吸籌確認，訊號轉強；若買壓退卻且價跌 → 隱性賣壓佔優，觀望。',
           title: '買壓背離',
           tone: 'info',
           priority: 6,
@@ -509,6 +565,7 @@ const DETECTORS: Detector[] = [
     c.ret24h > 0.03 && c.greenShare24h >= 0.55 && c.maxPullback24h > -0.08 && c.emaAbove20 && c.emaAbove50
       ? {
           id: 'trend-health',
+          next: '若回檔至 EMA20 附近且量縮 → 逢回布局位；若跌破 EMA50 → 趨勢轉弱，退出觀望。',
           title: '健康趨勢',
           tone: 'bull',
           priority: 7,
@@ -520,6 +577,7 @@ const DETECTORS: Detector[] = [
     c.pos < 0.3 && c.recentBelowEma20 && c.emaAbove20 && c.change1h > 1 && c.volZ >= 1.2
       ? {
           id: 'failed-breakdown-reclaim',
+          next: '若企穩於收復位之上 → 軋空延伸可期；若再度失守 EMA20 → 回收失敗，離場。',
           title: '假跌破回收',
           tone: 'bull',
           priority: 7,
@@ -531,6 +589,7 @@ const DETECTORS: Detector[] = [
     c.ret4h > 0.08 && c.pos > 0.9 && c.bbPctile > 0.9 && c.devEma20 > 0.05 && c.volZ < 1
       ? {
           id: 'parabolic-overextension',
+          next: '若出現首根放量陰 K → 動能透支確認，止盈離場；若橫盤消化乖離 → 可續觀察，唔追價。',
           title: '過熱乖離',
           tone: 'warn',
           priority: 8,
@@ -560,6 +619,7 @@ export function interpret(coin: Coin): Insight[] {
       detail:
         `未平倉量自 48h 高位縮 ${fb.oiDropPct.toFixed(1)}% 後，帶量突破 24h 盤整區（1H 量Z ${fb.volZ1h.toFixed(1)}）。` +
         `回測（154 幣、37 日）：+15%/24h 命中率 9.1% vs 基準 4.5%（lift ×2.0），僅供排序參考。`,
+      next: '若回測突破位不破 → 依出場計畫（TP1/TP2/SL）分批執行；若收回盤整區內 → 假突破，訊號失效。',
     });
   }
 
@@ -576,6 +636,7 @@ export function interpret(coin: Coin): Insight[] {
       detail:
         `縮倉築底中，且散戶多空比 24h 降 ${ea.lsDropPct.toFixed(1)}%、相對 BTC 強 ${fmtPct(ea.rsPct, 1)}。` +
         `回測（154 幣、37 日）：後續 72-96h 平均回報 +1.1~1.3%（基準 -1%）、回撤淺 30%，但命中 lift 僅 ×1.0-1.2 — 觀察名單參考，非進場訊號。`,
+      next: '若之後帶量突破盤整高點（升級為 ⚡）→ 先等訊號再談進場；若 OI 回升但價轉弱 → 移出觀察名單。',
     });
   }
 
@@ -583,6 +644,8 @@ export function interpret(coin: Coin): Insight[] {
     const ins = d(ctx);
     if (ins) out.push(ins);
   }
+  // stamp each read with the candle it marks (for the chart + the hh:mm label)
+  for (const ins of out) ins.atTime = anchorTime(ins.id, ctx);
   // the backtested trigger supersedes the generic volume-confirmed breakout
   const deduped = fb ? out.filter((i) => i.id !== 'breakout-confirmed') : out;
   deduped.sort((a, b) => b.priority - a.priority);

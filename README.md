@@ -30,7 +30,10 @@ npm run build    # production bundle in dist/
 ## Structure
 
 - `src/theme.css` — every color and style token lives here (single place to retheme)
-- `src/data/okx.ts` — OKX client: universe ranking, kline pagination, OI/funding resampling, throttled fetch pools, instrument search, on-demand single-coin fetch
+- `src/data/okx.ts` — OKX client: universe ranking, kline pagination, bulk + rubik OI, warm/cold split, funding resampling, throttled fetch pools, instrument search, on-demand single-coin fetch
+- `src/data/oiStore.ts` — warm bulk-OI history store (IndexedDB-backed in browser, in-memory in Node)
+- `src/lib/recording.ts` — shared compact scan-record format; `scripts/recordFile.ts` — Node JSONL sink
+- `scripts/recorder.ts` / `scripts/eval-recordings.ts` — headless data collector / event-library lift analysis
 - `src/components/SearchView.tsx` — the search tab (demo mode degrades to searching the local scan list)
 - `src/data/scan.ts` — live-first loader with demo fallback
 - `src/data/mockData.ts` — seeded synthetic data at a 5m base resolution, regime-shaped per coin per scan slot
@@ -66,13 +69,50 @@ The answer to "can we detect accumulation *before* the breakout": partially, and
 
 Every run reports the signal's hit rate against the **unconditional base rate** over all bars (the lift), mean/median MFE, MAE, and fixed-horizon returns, plus printed caveats (single regime window, per-coin clustering, intra-bar MFE optimism).
 
+## Bulk-OI warm store (scan ~4.5min → ~1.5min)
+
+The scan's bottleneck was the per-coin rubik OI-history endpoint (documented 5 req/2s, so 358 coins single-flight = most of the ~269s sweep). `src/data/oiStore.ts` replaces it with **one** bulk request per sweep (`GET /public/open-interest?instType=SWAP` → every coin's current `oiUsd`) accumulated into a local history:
+
+- Each sweep appends one snapshot and prunes past ~49h. Once a coin has ≥48h of stored points, the scan reads its OI trend straight from the store (`resample`d onto the candle grid, exactly like the rubik path) — **zero** rubik requests for that coin.
+- **Never spliced with rubik history.** Probing showed rubik's per-coin unit is inconsistent (DOGE reads in USD ~93M, PEPE in some other unit ~93,000M vs its real 22M USDT-swap OI); the app only ever survived because it uses OI as *ratios*. Bulk `oiUsd` is a clean, self-consistent USD unit, so the warm path uses bulk-only and the cold path uses rubik-only — a coin is always one or the other, so a unit mismatch can never create a false cliff.
+- **Warm/cold split** (`runRollingScan`): warm coins resolve synchronously (no pool, no pacing); only cold coins hit the paced rubik pool. A fully-warm sweep pays ~0 for OI. Measured: a synthetically-warmed full sweep ran **358 coins in 87s** (vs 269s cold), OI 358 warm / 0 cold.
+- Persisted to IndexedDB in the browser (survives restarts); Node headless is in-memory (re-warms over ~48h of running). Honest limits: the first ~48h of any fresh install is still cold; warm OI resolution is 15-min (vs rubik 5m), which is fine for the ratio/flush/strength uses (funding is already 8h-coarse); a missed bulk fetch is stale-guarded (`getSeries` returns null → falls back to rubik) rather than serving a gappy trend.
+
+## Event recorder + lift eval (`npm run recorder`, `npm run eval-rec`)
+
+To make signal evaluation not confined to one backtest window's market regime, each **completed** sweep is logged as one compact JSONL line to `%LOCALAPPDATA%/YaobiHunter/recordings/YYYY-MM-DD.jsonl`, plus a one-line `{type:'sweep-meta',…}` completeness marker. The per-coin row (schema **v2**, `src/lib/recording.ts`) is `[sym, price, oiUsd, funding, volZ, strength, regime, fb, ea, vol24h, change24h, ret4h, pos, buyShare4h, f8h, bbPctile, lsDrop, rs, oiDrop, spotVol24h, basis]` — the first 10 fields are the original v1 row (older files read fine; indexes 10-20 come back null via `recCoinField`), and the appended feature vector is what lets a replay re-evaluate detectors instead of just re-reading derived metrics. Two writers, one shared format and dir:
+
+- **Browser/exe**: `src/App.tsx` fire-and-forgets `POST /record` on sweep completion; the exe (`scripts/server.cjs`) and the Vite dev server (`vite.config.ts` middleware) both append it. Zero-cost data collection whenever the app is open.
+- **Headless**: `npm run recorder` — a long-runner that sweeps once per 15-min slot and appends directly. The realistic path for accumulating months without the UI (`--once` for a single sweep).
+
+**24/7 collection** runs via the auto-start setup below (the recorder is one of the two logon launchers). The passive writers only run while the app is open, so continuous data needs the headless recorder running in the background — `scripts/yaobi-ctl.ps1 install` sets that up.
+
+`npm run eval-rec` then measures each signal state (⚡, 蓄, strength≥70, top10) **as it actually fired live**: forward MFE / fixed-horizon return from the recorded 15-min price path vs the unconditional baseline → a lift table. Signals are sampled on their **rising edge** (off→on) so a persistent state counts as one event, not N correlated samples. `--dir PATH`, `--target %`, `--json`. Small samples until months accumulate — it verifies the mechanism; the statistics come with time.
+
 ## Standalone .exe (desktop app mode)
 
 `npm run build && node scripts/make-exe.mjs [outPath]` packages the app as a single Windows executable (Node SEA): `scripts/server.cjs` serves the embedded `dist/` and proxies `/okx/*` + `/bnv/*` upstream, so the exe needs no Node install, no npm, no separate proxy.
 
 Double-click → the console respawns itself hidden, then launches **Edge/Chrome in `--app` mode** with a dedicated profile: a standalone window with its own taskbar entry, no tabs, no URL bar. Closing the window shuts the hidden server down (a poll waits until no browser process holds the app profile — Edge's launcher exits early, so a naive child-exit check would orphan the window). Fallbacks: no Edge/Chrome found → default browser + visible console; `--console` forces the old behaviour; `--no-open` serves headless. Port 4780, auto-increments if busy. ~90 MB (embedded Node runtime); unsigned, so SmartScreen may warn on first run.
 
-**Signal notifications**: while the app is open, each scan batch diffs for newly-fired ⚡ 縮倉突破 signals and shows a Windows toast (per-coin 6h cooldown, persisted; click opens that coin's detail). Grant the notification permission when the app window asks once. Toasts only fire while the app is running — there is no background service.
+**Signal notifications**: while the app is open, each scan batch diffs for newly-fired ⚡ 縮倉突破 signals and shows a Windows toast (per-coin 6h cooldown, persisted; click opens that coin's detail). Grant the notification permission when the app window asks once. Toasts only fire while the app is running — there is no background service. For 閂-app coverage, set up the headless recorder + Telegram notifications in the **設定** tab and the auto-start below.
+
+## Auto-start + kill switch (`scripts/yaobi-ctl.ps1`)
+
+A single control script manages logon auto-start and a master off-switch, all without admin (it uses per-user Startup-folder launchers, not scheduled tasks).
+
+```powershell
+scripts\yaobi-ctl.ps1 install     # app + 24/7 recorder open at every logon
+scripts\yaobi-ctl.ps1 shortcuts   # desktop "Yaobi KILL" / "Yaobi RESUME" shortcuts
+scripts\yaobi-ctl.ps1 status      # KILL state · auto-start state · running processes
+scripts\yaobi-ctl.ps1 kill        # stop ALL background jobs; stays off across reboots
+scripts\yaobi-ctl.ps1 resume      # clear the switch, relaunch app + recorder
+scripts\yaobi-ctl.ps1 uninstall   # remove the Startup launchers
+```
+
+- **Auto-start**: `install` writes `YaobiApp.vbs` (launches `YaobiHunter.exe --auto`, console hidden) and `YaobiRecorder.vbs` (launches the headless recorder hidden) into the Startup folder. The exe still opens its own Edge `--app` window; only the launcher console is hidden.
+- **Kill switch** = the file `%LOCALAPPDATA%\YaobiHunter\KILL`. While it exists, `kill` has stopped every running app/recorder AND any future auto-start self-aborts (`server.cjs` skips the `--auto` launch, `recorder.ts` exits its loop, and the T1/T2 trading loops halt) — so a reboot won't bring anything back until `resume`. Double-click **Yaobi KILL** on the desktop for a one-click panic button; **Yaobi RESUME** turns it back on.
+- **After a code change**, rebuild so auto-start opens the current app: `npm run build && node scripts/make-exe.mjs` (exe) and re-run `scripts\yaobi-ctl.ps1 install` (recorder bundle). The exe must be closed first — run `kill` to release its file lock.
 
 ## Rate-limit tuning (documented limits × measured behaviour)
 

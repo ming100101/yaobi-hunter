@@ -15,6 +15,7 @@
  *   npm run backtest -- --mode breakout --volz 1.5
  *   npm run backtest -- --target 20 --horizon 48 --json
  *   npm run backtest -- --refresh        # refetch market data
+ *   npm run backtest -- --mode breakout --pnl   # 全跟 ⚡ 近似 ~37日 P&L(正反手)
  *
  * Modes:
  *   setup    — signal fires on flush+basing+neutral funding (+OI inflection).
@@ -41,6 +42,7 @@ interface Args {
   mode: 'setup' | 'breakout';
   refresh: boolean;
   json: boolean;
+  pnl: boolean; // --pnl: print equal-weight LONG/SHORT P&L from the signal set
   maxCoins: number;
   minVol: number;
   maxVol: number;
@@ -67,6 +69,7 @@ function parseArgs(): Args {
     mode: 'setup',
     refresh: false,
     json: false,
+    pnl: false,
     maxCoins: 0, // 0 = no cap
     minVol: 2e6,
     maxVol: 150e6,
@@ -100,6 +103,7 @@ function parseArgs(): Args {
       a.mode = v;
     } else if (k === '--refresh') a.refresh = true;
     else if (k === '--json') a.json = true;
+    else if (k === '--pnl') a.pnl = true;
     else if (k === '--max-coins') a.maxCoins = num();
     else if (k === '--min-vol') a.minVol = num();
     else if (k === '--max-vol') a.maxVol = num();
@@ -477,6 +481,24 @@ const spanDays =
     ? Math.round((coins[0].bars[coins[0].bars.length - 1].t - coins[0].bars[0].t) / 86_400_000)
     : 0;
 
+// --pnl: equal-weight P&L over the signal set. LONG = close@horizon return per
+// signal; SHORT = exact price mirror (−ret). LONG mean === signal mean ret@Nh by
+// construction (same numbers, money framing). No fees/funding modelled.
+const pnl = args.pnl
+  ? (() => {
+      const rets = signals.map((o) => o.retH);
+      const n = rets.length;
+      const sum = rets.reduce((a, b) => a + b, 0);
+      const mean = n ? sum / n : 0;
+      const median = n ? [...rets].sort((a, b) => a - b)[Math.floor(n / 2)] : 0;
+      return {
+        long: { n, winRate: n ? rets.filter((r) => r > 0).length / n : 0, mean, median, sum },
+        short: { n, winRate: n ? rets.filter((r) => r < 0).length / n : 0, mean: -mean, median: -median, sum: -sum },
+        baselineMeanRet: base.meanRetH,
+      };
+    })()
+  : null;
+
 const result = {
   params: args,
   universe: coins.length,
@@ -495,6 +517,7 @@ const result = {
       mfePct: +(o.mfe * 100).toFixed(1),
       maePct: +(o.mae * 100).toFixed(1),
     })),
+  ...(pnl ? { pnl } : {}),
 };
 
 if (args.json) {
@@ -528,6 +551,16 @@ if (args.json) {
   console.log(`median ret@${args.horizon}h ${pct(sig.medRetH).padEnd(10)} ${pct(base.medRetH)}`);
   console.log(`coins firing   ${perCoin.size}/${coins.length}`);
   console.log('');
+  if (pnl) {
+    console.log(`=== 全跟 P&L(等權,close@${args.horizon}h 出場)===`);
+    const row = (label: string, s: { n: number; winRate: number; mean: number; median: number; sum: number }) =>
+      `${label.padEnd(6)} n ${String(s.n).padEnd(5)} win ${pct(s.winRate).padStart(6)}  mean ${pct(s.mean).padStart(7)}  median ${pct(s.median).padStart(7)}  sum ${pct(s.sum).padStart(9)}`;
+    console.log(row('LONG', pnl.long));
+    console.log(row('SHORT', pnl.short));
+    console.log(`baseline meanRet@${args.horizon}h  ${pct(pnl.baselineMeanRet)}`);
+    console.log('caveat: short 為價格鏡像(未計 funding/費用);⚡ 為 1H 近似重構(mode=breakout),非 live detector 本身。');
+    console.log('');
+  }
   if (result.topSignals.length) {
     console.log('top signals by MFE:');
     for (const s of result.topSignals) console.log(`  ${s.symbol.padEnd(8)} ${s.time}  MFE +${s.mfePct}%  MAE ${s.maePct}%`);

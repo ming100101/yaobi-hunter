@@ -3,6 +3,7 @@ import type {
   EarlyAccum,
   EntryKind,
   ExitPlan,
+  RecFeatures,
   Regime,
   SeriesPoint,
   Signals,
@@ -133,6 +134,55 @@ export function confirmEarlyAccum(
   if (lsDropPct == null || rsPct == null) return null;
   if (lsDropPct < EA_LS_DROP_PCT || rsPct < EA_RS_MIN_PCT) return null;
   return { oiDropPct: setup.oiDropPct, lsDropPct, rsPct };
+}
+// ---------------------------------------------------------------------------
+
+// ---- recording v2 feature vector -------------------------------------------
+// The detector inputs a replay/backtest needs, computed on the SAME 15m
+// aggregation the live scanner uses (aggregateCandles(_, 3)) so recorded
+// features equal what analyze()/interpret see. Windows mirror analyze() exactly
+// (lines that compute ret4h/pos/buyShare4h) plus f8h and the Bollinger-width
+// percentile from interpret.buildCtx. Recorded per coin per sweep by toLite.
+export function featureVector(
+  candles: Candle[],
+  volume: VolumeBar[],
+  fundingHist: SeriesPoint[],
+): RecFeatures {
+  const c15 = aggregateCandles(candles, 3);
+  const v15 = aggregateVolume(volume, c15, 3);
+  const f15 = aggregateLast(fundingHist, 3);
+  const M = c15.length;
+  const at = (k: number) => Math.max(0, M - k);
+  const last = c15[M - 1].close;
+
+  const ret4h = (last / c15[at(17)].close - 1) * 100;
+
+  const w = c15.slice(at(96));
+  const lo = Math.min(...w.map((c) => c.low));
+  const hi = Math.max(...w.map((c) => c.high));
+  const pos = hi > lo ? (last - lo) / (hi - lo) : 0.5;
+
+  const last4h = v15.slice(at(16));
+  const tot4h = last4h.reduce((a, v) => a + v.value, 0);
+  const buyShare4h =
+    tot4h > 0 ? last4h.filter((v) => v.up).reduce((a, v) => a + v.value, 0) / tot4h : 0.5;
+
+  const f8h = f15[at(33)].value;
+
+  // Bollinger bandwidth percentile across the window (interpret.buildCtx)
+  const widths: number[] = [];
+  for (let i = 19; i < M; i++) {
+    let m = 0;
+    for (let j = i - 19; j <= i; j++) m += c15[j].close;
+    m /= 20;
+    let vv = 0;
+    for (let j = i - 19; j <= i; j++) vv += (c15[j].close - m) ** 2;
+    widths.push(m > 0 ? (4 * Math.sqrt(vv / 20)) / m : 0);
+  }
+  const bwNow = widths.length ? widths[widths.length - 1] : 0;
+  const bbPctile = widths.length ? widths.filter((x) => x <= bwNow).length / widths.length : 0.5;
+
+  return { ret4h, pos, buyShare4h, f8h, bbPctile };
 }
 // ---------------------------------------------------------------------------
 

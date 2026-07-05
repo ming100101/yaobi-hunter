@@ -4,12 +4,14 @@ import type {
   CoinLite,
   ScanProgress,
   ScanResult,
-  SearchHit,
   SignalTimes,
   Timeframe,
 } from './types';
 import { fetchFullCoin, getCachedFull, startScan } from './data/scan';
 import {
+  kvGet,
+  kvGetFresh,
+  kvSet,
   loadCachedScan,
   loadPinned,
   loadRecentViewed,
@@ -20,16 +22,33 @@ import {
   saveSignalTimes,
 } from './data/cache';
 import { initNotifications, notifyNewSignals } from './lib/notify';
+import { buildScanRecord, buildSweepMeta } from './lib/recording';
+import { createPaperState, drivePaper, risingFbEdges } from './lib/paper';
+import type { PaperState } from './lib/paper';
+import { hydrateSignalLog } from './lib/signalLog';
 import ScreenerList from './components/ScreenerList';
 import CoinDetail from './components/CoinDetail';
-import SearchView from './components/SearchView';
+import SearchBar from './components/SearchBar';
+import SettingsView from './components/SettingsView';
+import StrategyView from './components/StrategyView';
 import BrandMark from './components/BrandMark';
 import type { AppTab } from './components/NavTabs';
 
+// 15-min recording-slot size. Scanning is now continuous (back-to-back), but
+// record/paper/signal-times are still written once per 15-min slot (see the gate
+// in the scan effect), so the recorded dataset stays 15-min and nothing dupes.
 const SCAN_MS = 15 * 60 * 1000;
 const COIN_REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
 const DETAIL_LIVE_MS = 20 * 1000;
 const RECENT_MAX = 20;
+// Continuous scan: after a sweep finishes, chain the next one. A short breather
+// on success (the sweep itself is the real spacing); a longer backoff on
+// error/demo so a dead OKX can't tight-loop.
+const SCAN_GAP_MS = 2 * 1000;
+const SCAN_ERROR_BACKOFF_MS = 60 * 1000;
+// M1 single-driver window: skip the paper drive if the other process (recorder)
+// drove within this long, so app + recorder never double-drive the same slot.
+const PAPER_DRIVER_TTL = 5 * 60 * 1000;
 
 function sortLite(coins: CoinLite[]): CoinLite[] {
   return [...coins].sort(
@@ -56,6 +75,8 @@ export default function App() {
   const [fetching, setFetching] = useState<string | null>(null);
   const [fetchErr, setFetchErr] = useState<string | undefined>();
   const [query, setQuery] = useState('');
+  // search is a pop-up overlay (not a page): 搜尋 opens it over the current view
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const [, setTick] = useState(0);
 
@@ -63,16 +84,18 @@ export default function App() {
   const [sigTimes, setSigTimes] = useState<SignalTimes>({});
   const sigTimesRef = useRef<SignalTimes>({});
 
+  // M1 paper book (shared with the recorder via kv.json); drives on each
+  // completed live sweep and renders as a compact chip in the screener topbar
+  const [paper, setPaper] = useState<PaperState | null>(null);
+
   // user-pinned symbols — explicit choice, always float to the top of the list
   const [pinned, setPinned] = useState<Set<string>>(new Set());
   const pinnedRef = useRef<string[]>([]); // insertion order, for priority-fetch
 
-  // mirrors `loading` for the interval closure below
-  const loadingRef = useRef(true);
-  loadingRef.current = loading;
-
   const recentRef = useRef<string[]>([]);
   const scanGen = useRef(0);
+  const chainTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // schedules the next continuous sweep
+  const lastSlotRef = useRef(-1); // last 15-min slot that was recorded/paper-driven
   const wantDetail = useRef<string | null>(null);
   const lastCoinFetch = useRef<Record<string, number>>({});
   // stable handle for notification clicks (openCoin is recreated per render)
@@ -100,6 +123,12 @@ export default function App() {
         setSigTimes(t);
       }
     });
+    kvGet<PaperState>('paper-state').then((p) => {
+      if (!cancelled && p) setPaper(p);
+    });
+    void hydrateSignalLog(); // load the persisted 24h Signal Read history
+
+
     return () => {
       cancelled = true;
     };
@@ -129,7 +158,54 @@ export default function App() {
     void saveSignalTimes(next);
   };
 
-  // rolling scan on first load, each 15-min slot rollover, and manual refresh
+  // fire-and-forget one JSONL snapshot per completed live sweep to /record
+  // (exe: server.cjs; dev: vite middleware), followed by a sweep-meta
+  // completeness line. Best-effort — never blocks the UI.
+  const recordSweep = (coins: CoinLite[], tsMs: number) => {
+    try {
+      const post = (body: string) =>
+        void fetch('/record', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+        }).catch(() => {});
+      post(JSON.stringify(buildScanRecord(coins, tsMs, 'okx')));
+      post(JSON.stringify(buildSweepMeta(coins.length, tsMs, Date.now() - tsMs)));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Advance the paper book once per completed live sweep. Best-effort — wrapped
+  // so the sim can never throw into the sweep path (data collection outranks it).
+  // `prevFb` = ⚡ symbols live as of the previous sweep, so a rising edge (off→on)
+  // opens a virtual position. Reads state fresh to honour the single-driver rule
+  // against a running recorder; whoever drove within the TTL owns the slot.
+  const drivePaperSweep = (coins: CoinLite[], tsMs: number, prevFb: Set<string>) => {
+    void (async () => {
+      try {
+        const state = (await kvGetFresh<PaperState>('paper-state')) ?? createPaperState();
+        const now = Date.now();
+        if (now - state.lastDriverTs < PAPER_DRIVER_TTL && state.driver === 'recorder') {
+          setPaper(state); // recorder is alive and owns this slot — just mirror it
+          return;
+        }
+        const marks = new Map(coins.map((c) => [c.symbol, c.lastPrice] as [string, number]));
+        const next = drivePaper(state, marks, risingFbEdges(coins, prevFb), tsMs);
+        next.lastDriverTs = now;
+        next.driver = 'app';
+        await kvSet('paper-state', next);
+        setPaper(next);
+      } catch {
+        /* the paper sim must never break the sweep */
+      }
+    })();
+  };
+
+  // Continuous rolling scan: runs on first load and each time the previous sweep
+  // finishes (chained below), plus manual refresh. The live screener (setScan)
+  // updates every sweep for early signal detection; record/paper/signal-times are
+  // gated to once per 15-min slot so the dataset stays 15-min and nothing dupes.
   useEffect(() => {
     const gen = ++scanGen.current;
     setLoading(true);
@@ -142,7 +218,22 @@ export default function App() {
       // toast newly-fired ⚡ signals as each batch lands (live data only)
       if (source === 'okx') {
         void notifyNewSignals(coins, (sym) => openCoinRef.current(sym));
-        if (prog && prog.done === prog.total) updateSignalTimes(coins);
+        if (prog && prog.done === prog.total) {
+          // once per 15-min slot only: don't re-save data we already have when
+          // sweeps run back-to-back within the same slot
+          const slot = Math.floor(scanAt / SCAN_MS);
+          if (slot !== lastSlotRef.current) {
+            lastSlotRef.current = slot;
+            // capture last slot's ⚡ set BEFORE updateSignalTimes overwrites it,
+            // so the paper drive can open on the rising edge (off last → on now)
+            const prevFb = new Set(
+              Object.keys(sigTimesRef.current).filter((s) => sigTimesRef.current[s]?.fb != null),
+            );
+            updateSignalTimes(coins);
+            recordSweep(coins, scanAt);
+            drivePaperSweep(coins, scanAt, prevFb);
+          }
+        }
       }
       setScan((prev) => {
         // never let a demo fallback overwrite real (cached/previous) data
@@ -161,23 +252,25 @@ export default function App() {
           return prev;
         });
       }
+      // chain the next sweep: brief breather on success, backoff on error/demo
+      if (chainTimer.current) clearTimeout(chainTimer.current);
+      chainTimer.current = setTimeout(
+        () => {
+          if (scanGen.current === gen) setScanAt(Date.now());
+        },
+        error ? SCAN_ERROR_BACKOFF_MS : SCAN_GAP_MS,
+      );
     });
     return () => {
       handle.abort();
+      if (chainTimer.current) clearTimeout(chainTimer.current);
     };
   }, [scanAt, nonce]);
 
-  // countdown tick; rescan when a 15-min slot rolls over — but never abort a
-  // sweep that's still running (a sweep crossing a slot boundary used to get
-  // killed and restarted, so slow environments could NEVER finish one; the
-  // rollover now waits for the sweep to complete first)
+  // 1s heartbeat so relative ages (signal ages, 上次掃描) stay fresh between
+  // sweeps. (Scan cadence is now driven by chaining, not by this tick.)
   useEffect(() => {
-    const id = setInterval(() => {
-      setTick((t) => t + 1);
-      if (loadingRef.current) return;
-      const now = Date.now();
-      setScanAt((prev) => (Math.floor(now / SCAN_MS) !== Math.floor(prev / SCAN_MS) ? now : prev));
-    }, 1000);
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -272,6 +365,10 @@ export default function App() {
   };
 
   const switchTab = (t: AppTab) => {
+    if (t === 'search') {
+      setSearchOpen(true); // pop-up, not a page — leave the current tab as-is
+      return;
+    }
     setTab(t);
     closeDetail();
     setFetchErr(undefined);
@@ -292,8 +389,6 @@ export default function App() {
     );
   }
 
-  const nextInMs = SCAN_MS - (Date.now() % SCAN_MS);
-
   if (detail) {
     return (
       <CoinDetail
@@ -308,6 +403,7 @@ export default function App() {
         times={sigTimes[detail.coin.symbol]}
         pinned={pinned.has(detail.coin.symbol)}
         onTogglePin={() => togglePin(detail.coin.symbol)}
+        paper={paper}
       />
     );
   }
@@ -325,34 +421,51 @@ export default function App() {
     );
   }
 
-  if (tab === 'search') {
+  const searchOverlay = searchOpen ? (
+    <SearchBar
+      source={scan.source}
+      scanCoins={scan.coins}
+      query={query}
+      onQuery={setQuery}
+      onPick={(sym) => {
+        setSearchOpen(false);
+        openCoin(sym);
+      }}
+      onClose={() => setSearchOpen(false)}
+      fetching={fetching}
+      pinned={pinned}
+      onTogglePin={togglePin}
+    />
+  ) : null;
+
+  if (tab === 'settings') {
     return (
-      <SearchView
-        source={scan.source}
-        scanCoins={scan.coins}
-        tab={tab}
-        onTab={switchTab}
-        query={query}
-        onQuery={setQuery}
-        onPickScan={openCoin}
-        onPickLive={(hit: SearchHit) => openCoin(hit.base)}
-        fetching={fetching}
-        fetchErr={fetchErr}
-        pinned={pinned}
-        onTogglePin={togglePin}
-      />
+      <>
+        <SettingsView tab={tab} onTab={switchTab} />
+        {searchOverlay}
+      </>
+    );
+  }
+
+  if (tab === 'strategy') {
+    return (
+      <>
+        <StrategyView tab={tab} onTab={switchTab} />
+        {searchOverlay}
+      </>
     );
   }
 
   return (
+    <>
     <ScreenerList
       scan={scan}
-      nextInMs={nextInMs}
       loading={loading}
       loadErr={loadErr}
       progress={progress}
       fbOnly={fbOnly}
       onFbToggle={() => setFbOnly((v) => !v)}
+      paper={scan.source === 'okx' ? paper : null}
       sigTimes={sigTimes}
       pinned={pinned}
       onTogglePin={togglePin}
@@ -361,5 +474,7 @@ export default function App() {
       onSelect={openCoin}
       onRefresh={refresh}
     />
+    {searchOverlay}
+    </>
   );
 }

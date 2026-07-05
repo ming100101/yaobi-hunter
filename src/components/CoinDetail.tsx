@@ -7,9 +7,11 @@ import {
   type SignalTimesEntry,
   type Timeframe,
 } from '../types';
+import type { PaperState } from '../lib/paper';
 import { ChartSync } from '../lib/chartSync';
 import { aggregateForTf } from '../lib/aggregate';
 import { interpret } from '../lib/interpret';
+import { mergeSignals } from '../lib/signalLog';
 import { fmtAge, fmtClock, fmtMoney, fmtPct, fmtPrice, pctSign, strengthCls } from '../lib/format';
 import InsightZone from './InsightZone';
 import BrandMark from './BrandMark';
@@ -75,6 +77,7 @@ export default function CoinDetail({
   times,
   pinned,
   onTogglePin,
+  paper,
 }: {
   coin: Coin;
   scannedAt: number;
@@ -86,14 +89,23 @@ export default function CoinDetail({
   backLabel?: string;
   pinned: boolean;
   onTogglePin: () => void;
+  paper?: PaperState | null;
 }) {
   const sync = useMemo(() => new ChartSync(), []);
   // aggregate every panel's series to the selected timeframe together, so their
   // bar times stay identical and the shared crosshair/range sync lines up.
   // 1h/4h pull from the coin's 1H long series (weeks of history) when present.
   const view = useMemo(() => aggregateForTf(coin, tf), [coin, tf]);
-  // pattern read runs on the raw scan-resolution data, independent of display tf
-  const insights = useMemo(() => interpret(coin), [coin]);
+  // this coin's paper-trade fills → buy/sell markers on the K-line. Live data
+  // only: demo candles are synthetic, so real trade times wouldn't line up.
+  const fills = useMemo(
+    () => (source === 'okx' && paper ? paper.ledger.filter((r) => r.sym === coin.symbol) : []),
+    [source, paper, coin.symbol],
+  );
+  // pattern read runs on the raw scan-resolution data, independent of display tf.
+  // Merge each live snapshot into the coin's 24h log so reads persist (with their
+  // detected time + candle mark) even after strength drops — cleared only at 24h.
+  const insights = useMemo(() => mergeSignals(coin.symbol, interpret(coin), Date.now()), [coin]);
   const { plan } = coin;
   const pctFromEntry = (x: number) => fmtPct((x / plan.entry - 1) * 100, 1);
 
@@ -164,12 +176,17 @@ export default function CoinDetail({
           <Stat label="OI 4h" value={fmtPct(coin.oi4h, 1)} cls={pctSign(coin.oi4h, 1) >= 0 ? 'up' : 'down'} />
           <Stat label={`進場·${ENTRY_KIND_LABEL[plan.kind]}`} value={fmtPrice(plan.entry)} />
           <Stat label="24h量" value={fmtMoney(coin.vol24h)} />
+          <Stat
+            label="基差"
+            value={coin.basisPct == null ? '—' : `${coin.basisPct >= 0 ? '+' : ''}${coin.basisPct.toFixed(2)}%`}
+            cls={coin.basisPct != null && coin.basisPct <= 0 ? 'up' : 'muted'}
+          />
         </div>
       </header>
 
       <InsightZone insights={insights} />
 
-      <PricePanel coin={view} sync={sync} tf={tf} onTf={onTf} />
+      <PricePanel coin={view} sync={sync} tf={tf} onTf={onTf} fills={fills} insights={insights} />
       <OIPanel coin={view} sync={sync} tf={tf} />
       <FundingPanel coin={view} sync={sync} tf={tf} />
       <StrengthPanel coin={view} sync={sync} tf={tf} />

@@ -48,6 +48,9 @@ export interface Coin {
   funding: number; // current rate in %
   volZ: number; // volume z-score
   vol24h: number; // USD
+  oiUsd?: number | null; // absolute open interest in USD (bulk snapshot, live scan only)
+  spotVol24h?: number | null; // S1: 24h spot USD volume (bulk spot ticker); null if no spot pair
+  basisPct?: number | null; // S1: perp/spot basis % = (perpLast/spotLast − 1)×100; null if no spot pair
   flushBreakout: boolean; // backtested 縮倉突破 trigger (analyze.detectFlushBreakout)
   earlyAccum: EarlyAccum | null; // watchlist-tier 早期蓄力 (set by the data layer)
   riskFlags: string[];
@@ -76,6 +79,15 @@ export interface LongSeries {
 
 export type ScanSource = 'okx' | 'demo';
 
+// Notification config (persisted under kv key 'notify'; edited in the 設定 tab,
+// read by the headless recorder). Telegram + Windows toast on rising-edge ⚡.
+export interface NotifyCfg {
+  telegramToken: string;
+  telegramChatId: string;
+  toast: boolean; // fire a Windows toast too
+  cooldownH: number; // per-coin cooldown, hours
+}
+
 // per-symbol timestamps of when each signal state was first entered
 // (continuous-presence semantics: cleared when the state turns off)
 export interface SignalTimesEntry {
@@ -93,6 +105,18 @@ export interface EarlyAccum {
   rsPct: number;
 }
 
+// Recording v2 feature vector — the detector inputs a replay/backtest needs but
+// the v1 row (derived metrics only) couldn't reconstruct. Computed by
+// lib/analyze.featureVector on the 15m aggregation, so it matches what live
+// detectors see. Recorded per coin per sweep (src/lib/recording.ts).
+export interface RecFeatures {
+  ret4h: number; // % over 4h
+  pos: number; // 0..1 range position over 24h
+  buyShare4h: number; // 0..1 taker-buy share over 4h
+  f8h: number; // funding rate 8h ago, %
+  bbPctile: number; // 0..1 Bollinger-bandwidth percentile in the window
+}
+
 // Lightweight screener row — the rolling full-market scan keeps only derived
 // metrics per coin (full series for ~250 coins would cost hundreds of MB);
 // detail views fetch the full series on demand.
@@ -107,10 +131,22 @@ export interface CoinLite {
   volZ: number;
   vol24h: number;
   lastPrice: number;
+  spark?: number[]; // 24h closes @ 30-min resolution (~48 pts, 5 sig figs) from toLite; optional so old cache/demo/recorded coins typecheck
+  oiUsd: number | null; // absolute open interest (USD) from the bulk snapshot; recorder logs this
   flushBreakout: boolean; // backtested 縮倉突破 trigger is live on this coin
   earlyAccum: boolean; // 早期蓄力 watchlist flag
   riskFlags: string[];
   signals: Signals;
+  // recording-v2 feature vector + EA confirmation numbers; optional so demo
+  // coins and older cached scans still typecheck. Set by okx.toLite on live
+  // scans; consumed by lib/recording.buildScanRecord. Spot fields (S1) land later.
+  feat?: RecFeatures & {
+    lsDropPct?: number | null;
+    rsPct?: number | null;
+    oiDropPct?: number | null;
+    spotVol24h?: number | null;
+    basisPct?: number | null;
+  };
 }
 
 export interface ScanProgress {

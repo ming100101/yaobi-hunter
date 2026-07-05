@@ -55,6 +55,230 @@ function getFile(rel) {
   }
 }
 
+// Append a posted scan snapshot as one JSONL line under LOCALAPPDATA (same dir
+// the recorder + dev middleware use). Best-effort; never fails the request.
+function recordingsDir() {
+  const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  return path.join(base, 'YaobiHunter', 'recordings');
+}
+
+function appendRecord(req, res) {
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    try {
+      const dir = recordingsDir();
+      fs.mkdirSync(dir, { recursive: true });
+      const day = new Date().toISOString().slice(0, 10);
+      fs.appendFileSync(path.join(dir, `${day}.jsonl`), body.replace(/\s*\n\s*/g, ' ').trim() + '\n');
+    } catch {
+      /* recording is best-effort */
+    }
+    res.writeHead(204);
+    res.end();
+  });
+}
+
+// GET /recordings?from=YYYY-MM-DD&to=YYYY-MM-DD → concatenated raw JSONL for the
+// daily files in range (application/x-ndjson). CJS mirror of scripts/
+// recordingsServe.ts (SEA can't import the ESM module — keep the two in sync).
+// Range capped at 92 days (413); missing files just absent.
+function handleRecordings(req, res) {
+  const q = new URL(req.url, 'http://localhost');
+  const from = q.searchParams.get('from') || '';
+  const to = q.searchParams.get('to') || '';
+  const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+  if (!isDate(from) || !isDate(to)) {
+    res.writeHead(400, { 'content-type': 'text/plain' });
+    return res.end('from/to must be YYYY-MM-DD');
+  }
+  const fromMs = Date.parse(from + 'T00:00:00Z');
+  const toMs = Date.parse(to + 'T00:00:00Z');
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || toMs < fromMs) {
+    res.writeHead(400, { 'content-type': 'text/plain' });
+    return res.end('invalid range (to before from?)');
+  }
+  if ((toMs - fromMs) / 86400000 > 92) {
+    res.writeHead(413, { 'content-type': 'text/plain' });
+    return res.end('range too wide (> 92 days)');
+  }
+  let out = '';
+  try {
+    const dir = recordingsDir();
+    for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).sort()) {
+      const day = f.slice(0, -6); // strip '.jsonl'; lexical compare == date compare
+      if (day < from || day > to) continue;
+      out += fs.readFileSync(path.join(dir, f), 'utf8');
+      if (!out.endsWith('\n')) out += '\n';
+    }
+  } catch {
+    /* no recordings dir → empty body, still 200 */
+  }
+  res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+  res.end(out);
+}
+
+// Single kv.json under LOCALAPPDATA: the port-agnostic home for the small
+// persisted keys (pins, recently-viewed, signal ages, notify cooldowns, warm OI
+// store). IndexedDB is per-origin, so the port drift (4780 -> 4781 when the port
+// is briefly held) used to orphan all of it; this file survives any port. GET
+// returns the whole object, POST merges one {key, value}. Atomic write (tmp +
+// rename); best-effort, never fails the request.
+function kvFilePath() {
+  const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  return path.join(base, 'YaobiHunter', 'kv.json');
+}
+
+function readKvFile() {
+  try {
+    return JSON.parse(fs.readFileSync(kvFilePath(), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function handleKv(req, res) {
+  if (req.method === 'GET') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(readKvFile()));
+    return;
+  }
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    try {
+      const { key, value } = JSON.parse(body);
+      if (typeof key === 'string') {
+        const p = kvFilePath();
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        const cur = readKvFile();
+        cur[key] = value;
+        fs.writeFileSync(p + '.tmp', JSON.stringify(cur));
+        fs.renameSync(p + '.tmp', p);
+      }
+    } catch {
+      /* kv is best-effort */
+    }
+    res.writeHead(204);
+    res.end();
+  });
+}
+
+// --- notification setup endpoints (mirror of vite's notifyEndpoints) --------
+// The 設定 tab calls these; all Telegram/toast I/O runs here in Node so the
+// browser avoids CORS and a test exercises the real send path.
+function tgEscape(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function tgSend(token, chatId, text, cb) {
+  if (!token || !chatId) return cb({ ok: false, error: 'missing token or chat id' });
+  const payload = JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' });
+  const r = https.request(
+    {
+      hostname: 'api.telegram.org',
+      path: `/bot${token}/sendMessage`,
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) },
+    },
+    (resp) => {
+      let d = '';
+      resp.on('data', (c) => (d += c));
+      resp.on('end', () => {
+        try {
+          const j = JSON.parse(d);
+          cb(j.ok ? { ok: true } : { ok: false, error: j.description || `http ${resp.statusCode}` });
+        } catch {
+          cb({ ok: false, error: `http ${resp.statusCode}` });
+        }
+      });
+    },
+  );
+  r.on('error', (e) => cb({ ok: false, error: e.message }));
+  r.write(payload);
+  r.end();
+}
+
+function tgDetectChat(token, cb) {
+  if (!token) return cb({ error: 'missing token' });
+  const r = https.get({ hostname: 'api.telegram.org', path: `/bot${token}/getUpdates` }, (resp) => {
+    let d = '';
+    resp.on('data', (c) => (d += c));
+    resp.on('end', () => {
+      try {
+        const j = JSON.parse(d);
+        if (!j.ok) return cb({ error: j.description || `http ${resp.statusCode}` });
+        const u = j.result || [];
+        for (let i = u.length - 1; i >= 0; i--) {
+          const m = u[i].message || u[i].edited_message || u[i].channel_post;
+          const chat = m && m.chat;
+          if (chat && chat.id != null) {
+            const name =
+              [chat.first_name, chat.last_name].filter(Boolean).join(' ') ||
+              chat.title ||
+              chat.username ||
+              '';
+            return cb({ chatId: String(chat.id), name });
+          }
+        }
+        cb({ error: '未搵到訊息 — 請先喺 Telegram 傳一句俾你個 bot,再試' });
+      } catch {
+        cb({ error: `http ${resp.statusCode}` });
+      }
+    });
+  });
+  r.on('error', (e) => cb({ error: e.message }));
+}
+
+function winToast(title, body, cb) {
+  const ps = `
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+$xml = @"
+<toast><visual><binding template='ToastGeneric'><text>${tgEscape(title)}</text><text>${tgEscape(body)}</text></binding></visual></toast>
+"@
+$doc = New-Object Windows.Data.Xml.Dom.XmlDocument
+$doc.LoadXml($xml)
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('YaobiHunter').Show([Windows.UI.Notifications.ToastNotification]::new($doc))`;
+  execFile('powershell', ['-NoProfile', '-Command', ps], { windowsHide: true }, (err) =>
+    cb(err ? { ok: false, error: String((err && err.message) || err) } : { ok: true }),
+  );
+}
+
+function readJsonBody(req, cb) {
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    try {
+      cb(JSON.parse(body || '{}'));
+    } catch {
+      cb({});
+    }
+  });
+}
+
+function handleNotifyDetect(req, res) {
+  readJsonBody(req, (b) =>
+    tgDetectChat(b.token, (r) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(r));
+    }),
+  );
+}
+
+function handleNotifyTest(req, res) {
+  readJsonBody(req, (b) => {
+    tgSend(b.token, b.chatId, '⚡ 縮倉突破 — <b>測試</b>/USDT\n呢個係測試通知,設定成功。', (telegram) => {
+      const done = (toast) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ telegram, toast }));
+      };
+      if (b.toast === false) done({ ok: true, error: 'skipped' });
+      else winToast('⚡ 縮倉突破 — 測試', '呢個係測試通知,設定成功。', done);
+    });
+  });
+}
+
 function proxyTo(hostname, prefix, req, res, pathBase = '') {
   const upstreamPath = pathBase + (req.url.slice(prefix.length) || '/');
   const up = https.request(
@@ -95,6 +319,11 @@ const server = http.createServer((req, res) => {
     // S3 XML listing endpoint for the Binance public data bucket
     return proxyTo('s3-ap-northeast-1.amazonaws.com', '/bnv', req, res, '/data.binance.vision');
   }
+  if (rawUrl === '/record' && req.method === 'POST') return appendRecord(req, res);
+  if (rawUrl === '/kv' && (req.method === 'GET' || req.method === 'POST')) return handleKv(req, res);
+  if (rawUrl === '/notify-detect-chat' && req.method === 'POST') return handleNotifyDetect(req, res);
+  if (rawUrl === '/notify-test' && req.method === 'POST') return handleNotifyTest(req, res);
+  if (rawUrl.startsWith('/recordings') && req.method === 'GET') return handleRecordings(req, res);
 
   let rel = rawUrl.split('?')[0];
   rel = rel === '/' ? 'index.html' : decodeURIComponent(rel.slice(1));
@@ -120,6 +349,22 @@ let port = 4780;
 const noOpen = process.argv.includes('--no-open');
 const forceConsole = process.argv.includes('--console');
 const isDaemon = process.argv.includes('--daemon');
+const isAuto = process.argv.includes('--auto');
+
+// Master off-switch. When launched by the logon auto-start task (--auto) and the
+// KILL file exists, do not open — so the kill switch stays in effect across
+// reboots. A manual double-click (no --auto) always opens, KILL or not.
+if (isAuto) {
+  try {
+    const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    if (fs.existsSync(path.join(base, 'YaobiHunter', 'KILL'))) {
+      console.log('KILL file present — auto-launch aborted');
+      process.exit(0);
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 // Chromium binary for --app mode (own window, own taskbar entry, no tabs)
 function findChromium() {

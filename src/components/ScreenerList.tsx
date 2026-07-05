@@ -1,17 +1,20 @@
 import type { CoinLite, ScanProgress, ScanResult, SignalTimes, SignalTimesEntry } from '../types';
+import type { PaperState } from '../lib/paper';
 import BrandMark from './BrandMark';
 import NavTabs, { type AppTab } from './NavTabs';
+import PaperChip from './PaperChip';
 import { RegimeTag } from './RegimeTag';
+import Sparkline from './Sparkline';
 import { fmtAge, fmtClock, fmtMoney, fmtPct, pctSign, strengthCls } from '../lib/format';
 
 interface Props {
   scan: ScanResult;
-  nextInMs: number;
   loading: boolean;
   loadErr?: string;
   progress: ScanProgress | null;
   fbOnly: boolean;
   onFbToggle: () => void;
+  paper: PaperState | null;
   sigTimes: SignalTimes;
   pinned: Set<string>;
   onTogglePin: (symbol: string) => void;
@@ -100,6 +103,9 @@ function Row({
           </span>
         ) : null}
       </span>
+      <span className="spark-cell" title={`24h ${fmtPct(c.change24h)}`}>
+        <Sparkline pts={c.spark} up={c.change24h >= 0} />
+      </span>
       <span>
         <RegimeTag regime={c.regime} />
       </span>
@@ -126,12 +132,12 @@ function Row({
 
 export default function ScreenerList({
   scan,
-  nextInMs,
   loading,
   loadErr,
   progress,
   fbOnly,
   onFbToggle,
+  paper,
   sigTimes,
   pinned,
   onTogglePin,
@@ -140,8 +146,6 @@ export default function ScreenerList({
   onSelect,
   onRefresh,
 }: Props) {
-  const mm = Math.floor(nextInMs / 60000);
-  const ss = Math.floor((nextInMs % 60000) / 1000);
   const filtered = fbOnly ? scan.coins.filter((c) => c.flushBreakout) : scan.coins;
   // pinned coins float to the top; each group keeps its incoming strength order
   const rows = [
@@ -173,14 +177,14 @@ export default function ScreenerList({
             ⚡ 縮倉突破
           </button>
           <SourceChip source={scan.source} />
-          {progress && (
-            <span className="chip num">
-              掃描 {progress.done}/{progress.total}
-            </span>
-          )}
-          <span className="chip">上次掃描 {fmtClock(scan.scannedAt)}</span>
-          <span className="chip num">
-            下次 {mm}:{String(ss).padStart(2, '0')}
+          <PaperChip paper={paper} />
+          {/* fixed-width slot, reserved even when idle, so the row never reflows */}
+          <span className="chip num scan-count" style={progress ? undefined : { visibility: 'hidden' }}>
+            掃描 {progress ? `${progress.done}/${progress.total}` : '0/0'}
+          </span>
+          <span className="chip last-chip">上次掃描 {fmtClock(scan.scannedAt)}</span>
+          <span className={`chip cont-chip${loading ? ' on' : ''}`} title="一輪掃描完即接下一輪，唔等 15 分鐘">
+            <i className="live-dot" /> 連續掃描
           </span>
           <button className="btn" onClick={onRefresh} disabled={loading}>
             {loading ? '掃描中…' : '↻ 重新掃描'}
@@ -199,6 +203,7 @@ export default function ScreenerList({
       <div className="card table-card">
         <div className="scr-head">
           <span>幣種</span>
+          <span>24h</span>
           <span>階段</span>
           <span>強度</span>
           <span className="ta-r">1h</span>
@@ -227,8 +232,8 @@ export default function ScreenerList({
 
       <div className="footer">
         {scan.source === 'okx'
-          ? '資料來源 OKX USDT 永續 · 實時 · 每 15 分鐘掃描一次'
-          : '資料來源 模擬資料（demo）· 每 15 分鐘掃描一次'}
+          ? '資料來源 OKX USDT 永續 · 實時 · 連續掃描（一輪完即接下一輪）· 記錄每 15 分鐘一格'
+          : '資料來源 模擬資料（demo）· 連續掃描'}
         <span className="muted"> · 強度為示範性評分，非投資建議</span>
       </div>
     </div>

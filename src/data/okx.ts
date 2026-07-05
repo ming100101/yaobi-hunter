@@ -14,7 +14,9 @@ import {
   confirmEarlyAccum,
   detectEarlySetup,
   EA_RS_MIN_PCT,
+  featureVector,
 } from '../lib/analyze';
+import { appendSnapshot, getSeries as getWarmOi, hydrate as hydrateOi, storeSize } from './oiStore';
 
 // Real USDT-perp data from OKX v5. Reachable where Binance/Bybit are geo-blocked.
 // In the browser BASE is the Vite proxy path (/okx); a node dry-run can pass the
@@ -104,6 +106,60 @@ async function getAllTickers(baseUrl: string): Promise<any[]> {
   return rows;
 }
 
+// S1: one bulk request → every spot -USDT pair's last price + 24h USD volume,
+// keyed by base coin. Verified 2026-07-04 against the live API: OKX SPOT
+// volCcy24h IS quote-currency volume (BTC-USDT volCcy24h ≈ vol24h×last ≈ $0.36B),
+// so it is USD directly — no ×last. 60s cache like getAllTickers; one call per
+// sweep, so the 20 req/2s tickers limit is a non-issue. Non-USDT quotes are
+// filtered out (a BTC-USDC row would corrupt the BTC key).
+let spotTickersCache: { at: number; rows: Map<string, { last: number; volUsd: number }> } | null = null;
+
+export async function getSpotTickers(baseUrl: string): Promise<Map<string, { last: number; volUsd: number }>> {
+  if (spotTickersCache && Date.now() - spotTickersCache.at < 60_000) return spotTickersCache.rows;
+  const rows = await okxGet(baseUrl, '/api/v5/market/tickers?instType=SPOT');
+  const map = new Map<string, { last: number; volUsd: number }>();
+  for (const r of rows) {
+    const instId: string = r.instId;
+    if (!instId.endsWith('-USDT')) continue;
+    const base = instId.slice(0, -'-USDT'.length);
+    const last = Number(r.last);
+    const volUsd = Number(r.volCcy24h); // SPOT volCcy24h = quote (USDT) volume = USD
+    if (!Number.isFinite(last) || last <= 0 || !Number.isFinite(volUsd)) continue;
+    map.set(base, { last, volUsd });
+  }
+  spotTickersCache = { at: Date.now(), rows: map };
+  return map;
+}
+
+// Perp/spot basis + spot USD volume for one coin, from its perp last price and
+// its spot ticker (undefined = pure-perp listing → all null). Positive basis =
+// perp premium (槓桿主導); negative = spot premium (現貨主導/搶現貨).
+function spotFields(
+  perpLast: number,
+  s: { last: number; volUsd: number } | undefined,
+): { spotVol24h: number | null; basisPct: number | null } {
+  if (!s) return { spotVol24h: null, basisPct: null };
+  return {
+    spotVol24h: Math.round(s.volUsd),
+    basisPct: s.last > 0 && perpLast > 0 ? Number(((perpLast / s.last - 1) * 100).toFixed(3)) : null,
+  };
+}
+
+// One request → every swap's current open interest in USD. The warm-store
+// accumulates these into per-coin OI history, replacing the slow per-coin rubik
+// history endpoint once ~48h has built up. USDT swaps only (what we scan).
+export async function fetchBulkOi(baseUrl: string): Promise<Array<{ instId: string; oiUsd: number }>> {
+  const rows = await okxGet(baseUrl, '/api/v5/public/open-interest?instType=SWAP');
+  const out: Array<{ instId: string; oiUsd: number }> = [];
+  for (const r of rows) {
+    const instId: string = r.instId;
+    if (!instId.endsWith('-USDT-SWAP')) continue;
+    const oiUsd = Number(r.oiUsd);
+    if (Number.isFinite(oiUsd) && oiUsd > 0) out.push({ instId, oiUsd });
+  }
+  return out;
+}
+
 // Search every listed USDT perp by symbol substring. Empty query = top by
 // volume (discovery). Prefix matches rank above substring matches.
 export async function searchInstruments(baseUrl: string, query: string): Promise<SearchHit[]> {
@@ -162,6 +218,11 @@ export async function fetchLiveCoin(baseUrl: string, hit: SearchHit, nowMs: numb
       coin.earlyAccum = confirmEarlyAccum(setup, lsDrop, ret - btcRet);
     }
   }
+  // S1: perp/spot basis for the detail header (bulk spot map is 60s-cached).
+  const spot = await getSpotTickers(baseUrl).catch(() => new Map<string, { last: number; volUsd: number }>());
+  const sf = spotFields(candles[candles.length - 1].close, spot.get(hit.base));
+  coin.spotVol24h = sf.spotVol24h;
+  coin.basisPct = sf.basisPct;
   return coin;
 }
 
@@ -369,6 +430,17 @@ export function prioritize<T>(items: T[], key: (t: T) => string, priority: strin
   );
 }
 
+// 24h close sparkline @ 30-min resolution — the sweep already has the full
+// series here; keep ~48 points so the screener can draw a trend thumbnail
+function sparkOf(candles: Candle[]): number[] {
+  const win = candles.slice(Math.max(0, candles.length - 289));
+  const pts: number[] = [];
+  for (let i = 0; i < win.length; i += 6) pts.push(win[i].close);
+  const last = win[win.length - 1].close;
+  if (pts[pts.length - 1] !== last) pts.push(last);
+  return pts.map((v) => Number(v.toPrecision(5)));
+}
+
 // Strip the heavy per-bar series down to screener-row metrics.
 export function toLite(coin: Coin): CoinLite {
   const n = coin.candles.length;
@@ -385,10 +457,23 @@ export function toLite(coin: Coin): CoinLite {
     volZ: coin.volZ,
     vol24h: coin.vol24h,
     lastPrice: last,
+    spark: sparkOf(coin.candles),
+    oiUsd: coin.oiUsd ?? null,
     flushBreakout: coin.flushBreakout,
     earlyAccum: !!coin.earlyAccum,
     riskFlags: coin.riskFlags,
     signals: coin.signals,
+    // recording-v2 feature vector + EA confirmation numbers (recording.ts logs
+    // these; spot fields are filled by S1). Uses the same 15m aggregation as
+    // analyze/interpret, so recorded == live detector inputs.
+    feat: {
+      ...featureVector(coin.candles, coin.volume, coin.fundingHist),
+      lsDropPct: coin.earlyAccum?.lsDropPct ?? null,
+      rsPct: coin.earlyAccum?.rsPct ?? null,
+      oiDropPct: coin.earlyAccum?.oiDropPct ?? null,
+      spotVol24h: coin.spotVol24h ?? null, // S1: recording.ts idx 19 reads this
+      basisPct: coin.basisPct ?? null, // S1: recording.ts idx 20 reads this
+    },
   };
 }
 
@@ -424,9 +509,26 @@ export async function runRollingScan(
   onBatch: (batch: Coin[], progress: ScanProgress) => boolean,
 ): Promise<void> {
   const tzShift = -new Date(nowMs).getTimezoneOffset() * 60;
+  await hydrateOi();
   // recently-viewed coins land in the first batches so their data is freshest
   const universe = prioritize(await getUniverse(base, bnBases), (t) => t.base, priority);
   if (!universe.length) throw new Error('empty universe');
+
+  // One bulk request → every coin's current OI (USD). Append it to the warm
+  // store; coins with >=48h accumulated read their OI trend from there (no
+  // rubik request), which is what makes a warm sweep ~1min instead of ~4.5.
+  const bulkOi = new Map<string, number>();
+  try {
+    const rows = await fetchBulkOi(base);
+    appendSnapshot(rows, nowMs);
+    for (const r of rows) bulkOi.set(r.instId, r.oiUsd);
+  } catch {
+    /* no snapshot this sweep — warm coins go stale-guarded, cold path is used */
+  }
+
+  // S1: one bulk request → every spot -USDT pair's price + 24h USD volume, for
+  // the perp/spot basis and spot-volume signal. 60s-cached, best-effort.
+  const spot = await getSpotTickers(base).catch(() => new Map<string, { last: number; volUsd: number }>());
 
   // one scalar shared by every coin's 早期蓄力 relative-strength check
   const btcRet24 = await getBtcRet24h(base);
@@ -437,6 +539,8 @@ export async function runRollingScan(
   const total = universe.length;
   let done = 0;
   let emitted = 0;
+  let warmCount = 0; // coins served from the OI store (no rubik request)
+  let coldCount = 0; // coins that still needed a rubik OI fetch
 
   // one dead symbol must skip that coin, not kill the whole sweep
   const fetchCandles = (slice: Ticker[]) =>
@@ -451,13 +555,34 @@ export async function runRollingScan(
     // OI pool (the long pole) runs
     if (bi + 1 < slices.length) candlesInFlight = fetchCandles(slices[bi + 1]);
 
-    const [oiData, fundingData] = await Promise.all([
+    // Resolve OI: WARM coins (>=48h in the store) come straight from the local
+    // snapshot history — free, synchronous, no rubik request. Only COLD coins
+    // fall through to the paced rubik pool, so a fully-warm sweep pays ~0 here.
+    const oiData: (SeriesPoint[] | null)[] = new Array(slice.length).fill(null);
+    const coldIdx: number[] = [];
+    for (let i = 0; i < slice.length; i++) {
+      const cd = candleData[i];
+      if (!cd) continue;
+      const warm = getWarmOi(slice[i].instId, nowMs);
+      if (warm) {
+        oiData[i] = resample(
+          cd.times,
+          warm.map((p) => ({ t: p.t + tzShift, v: p.v })),
+        );
+        warmCount++;
+      } else {
+        coldIdx.push(i);
+      }
+    }
+    coldCount += coldIdx.length;
+
+    const [coldOi, fundingData] = await Promise.all([
       mapPool(
-        slice,
+        coldIdx,
         2,
-        (t, i) => {
-          const cd = candleData[i];
-          return cd ? getOi(base, t.base, tzShift, cd.times).catch(() => null) : Promise.resolve(null);
+        (i) => {
+          const cd = candleData[i]!;
+          return getOi(base, slice[i].base, tzShift, cd.times).catch(() => null);
         },
         500,
       ),
@@ -473,6 +598,9 @@ export async function runRollingScan(
         80,
       ),
     ]);
+    coldIdx.forEach((i, k) => {
+      oiData[i] = coldOi[k];
+    });
 
     const batch: Coin[] = [];
     for (let i = 0; i < slice.length; i++) {
@@ -481,6 +609,7 @@ export async function runRollingScan(
       const fundingHist = fundingData[i];
       if (!cd || cd.candles.length < MIN_BARS || !oi) continue;
       const derived = analyze({ candles: cd.candles, volume: cd.volume, oi, fundingHist });
+      const sf = spotFields(cd.candles[cd.candles.length - 1].close, spot.get(slice[i].base));
       batch.push({
         symbol: slice[i].base,
         candles: cd.candles,
@@ -488,6 +617,9 @@ export async function runRollingScan(
         oi,
         fundingHist,
         ...derived,
+        oiUsd: bulkOi.get(slice[i].instId) ?? null,
+        spotVol24h: sf.spotVol24h,
+        basisPct: sf.basisPct,
         earlyAccum: null,
       });
     }
@@ -518,5 +650,6 @@ export async function runRollingScan(
     }
   }
 
+  console.log(`[scan] OI: ${warmCount} warm (store), ${coldCount} cold (rubik); store holds ${storeSize()} instruments`);
   if (emitted === 0) throw new Error('no coins assembled');
 }

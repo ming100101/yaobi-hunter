@@ -56,6 +56,14 @@ export function fmtClock(ts: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+// Chart candle times (unix seconds) are pre-shifted by the local tz offset so
+// lightweight-charts, which renders timestamps as UTC, shows local wall-clock.
+// Read hh:mm back with UTC getters so the offset isn't applied a second time.
+export function fmtClockChart(tsSec: number): string {
+  const d = new Date(tsSec * 1000);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
 // elapsed time since `since`, compact zh units: 47分 / 3時20分 / 2日5時
 export function fmtAge(since: number): string {
   const mins = Math.max(0, Math.floor((Date.now() - since) / 60_000));
