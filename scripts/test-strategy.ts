@@ -1,7 +1,7 @@
 // M3 unit check (amended: 20x bracket exits + position discipline).
 // Run: `npm run test-strategy`. All numbers are exact per the spec worked cases.
 import { parseRecordings, SLOT_MS } from '../src/lib/evalCore';
-import { buildDailyReport, sideStats, type StratDay } from '../src/lib/strategyReport';
+import { buildDailyReport, sideStats, type StratDay, type StratMode } from '../src/lib/strategyReport';
 
 let fail = 0;
 const approx = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps;
@@ -23,14 +23,14 @@ const row = (c: C): (string | number)[] => {
   return r;
 };
 // steps[k] = null (skipped slot → gap) or a list of coin tuples for slot SLOT0+k
-function reportDay(steps: (C[] | null)[], nowMs: number): StratDay | null {
+function reportDay(steps: (C[] | null)[], nowMs: number, mode: StratMode = 'ladder'): StratDay | null {
   const lines: string[] = [];
   steps.forEach((coins, k) => {
     if (!coins) return;
     const slot = SLOT0 + k;
-    lines.push(JSON.stringify({ v: 2, ts: slot * SLOT_MS, slot, source: 'okx', coins: coins.map(row) }));
+    lines.push(JSON.stringify({ v: 2, ts: slot * SLOT_MS, slot, source: 'binance', coins: coins.map(row) }));
   });
-  return buildDailyReport(parseRecordings(lines.join('\n')), 14, nowMs)[0] ?? null;
+  return buildDailyReport(parseRecordings(lines.join('\n')), 14, nowMs, mode)[0] ?? null;
 }
 const find = (arr: { sym: string }[], sym: string) => arr.find((t) => t.sym === sym);
 
@@ -120,6 +120,25 @@ const find = (arr: { sym: string }[], sym: string) => arr.find((t) => t.sym === 
   ];
   const d = reportDay(Fx, JULY2)!;
   ok('F: LAST edge counted as skipped', d.fb.skippedLong === 1 && d.fb.long.length === 0, [d.fb.skippedLong, d.fb.long.length]);
+}
+
+// ---- Fixture G: allout mode — +200% single exit, first-signal-only ----------
+{
+  const G: C[][] = [
+    [['MOON', 1.0, 50, 0], ['RUG', 1.0, 50, 0], ['REIN', 1.0, 50, 0]],
+    [['MOON', 1.0, 50, 1], ['RUG', 1.0, 50, 1], ['REIN', 1.0, 50, 1]], // edges
+    [['MOON', 1.06, 50, 0], ['RUG', 0.95, 50, 0], ['REIN', 0.95, 50, 0]], // MOON +6% (no partial in allout); RUG/REIN liq
+    [['MOON', 1.1, 50, 0], ['RUG', 1.0, 50, 0], ['REIN', 1.0, 50, 0]], // MOON hits +10% → all out
+    [['MOON', 1.05, 50, 0], ['RUG', 1.0, 50, 0], ['REIN', 1.0, 50, 1]], // REIN second edge — ignored in allout
+    [['MOON', 1.0, 50, 0], ['RUG', 1.0, 50, 0], ['REIN', 1.05, 50, 0]],
+  ];
+  const d = reportDay(G, JULY2, 'allout')!;
+  const moon = find(d.fb.long, 'MOON')!;
+  ok('G: MOON = +2.00 single all-out', approx(moon.roi, 2.0), moon.roi);
+  ok('G: MOON no TP1 partial', !moon.fills.some((f) => f.kind === 'tp1'), moon.fills.map((f) => f.kind));
+  ok('G: MOON exit kind = allout', moon.fills.at(-1)!.kind === 'allout', moon.fills.at(-1)!.kind);
+  ok('G: RUG = -1.00 (20x 爆倉式)', approx(find(d.fb.long, 'RUG')!.roi, -1.0), find(d.fb.long, 'RUG')!.roi);
+  ok('G: REIN 1 trade only (首訊號,SL 後不重入)', d.fb.long.filter((t) => t.sym === 'REIN').length === 1, d.fb.long.filter((t) => t.sym === 'REIN').length);
 }
 
 // ---- sideStats ---------------------------------------------------------------

@@ -5,6 +5,7 @@ import {
   type ScanResult,
   type Signals,
   type SignalTimesEntry,
+  type ThemeName,
   type Timeframe,
 } from '../types';
 import type { PaperState } from '../lib/paper';
@@ -78,6 +79,8 @@ export default function CoinDetail({
   pinned,
   onTogglePin,
   paper,
+  theme,
+  onToggleTheme,
 }: {
   coin: Coin;
   scannedAt: number;
@@ -90,6 +93,8 @@ export default function CoinDetail({
   pinned: boolean;
   onTogglePin: () => void;
   paper?: PaperState | null;
+  theme: ThemeName;
+  onToggleTheme: () => void;
 }) {
   const sync = useMemo(() => new ChartSync(), []);
   // aggregate every panel's series to the selected timeframe together, so their
@@ -99,7 +104,7 @@ export default function CoinDetail({
   // this coin's paper-trade fills → buy/sell markers on the K-line. Live data
   // only: demo candles are synthetic, so real trade times wouldn't line up.
   const fills = useMemo(
-    () => (source === 'okx' && paper ? paper.ledger.filter((r) => r.sym === coin.symbol) : []),
+    () => (source !== 'demo' && paper ? paper.ledger.filter((r) => r.sym === coin.symbol) : []),
     [source, paper, coin.symbol],
   );
   // pattern read runs on the raw scan-resolution data, independent of display tf.
@@ -118,21 +123,30 @@ export default function CoinDetail({
         <div className="top-actions">
           <button
             type="button"
+            className={`btn ghost${theme === 'y2k' ? ' on' : ''}`}
+            title="🎀 Y2K 主題（純外觀，唔影響任何數據/訊號）"
+            aria-pressed={theme === 'y2k'}
+            onClick={onToggleTheme}
+          >
+            🎀
+          </button>
+          <button
+            type="button"
             className={`pin-btn detail${pinned ? ' on' : ''}`}
             title={pinned ? '取消釘選' : '釘選置頂'}
             onClick={onTogglePin}
           >
             📌 {pinned ? '已釘選' : '釘選'}
           </button>
-          {source === 'okx' ? (
+          {source !== 'demo' ? (
             <span className="chip live">
-              <i className="live-dot" /> LIVE · OKX
+              <i className="live-dot" /> LIVE · Binance
             </span>
           ) : (
             <span className="chip demo">DEMO · 模擬</span>
           )}
-          <span className="chip" title={source === 'okx' ? '每 20 秒於背景重新拉取此幣種資料' : undefined}>
-            {source === 'okx' ? '更新於' : '上次掃描'} {fmtClock(scannedAt)}
+          <span className="chip" title={source !== 'demo' ? '每 20 秒於背景重新拉取此幣種資料' : undefined}>
+            {source !== 'demo' ? '更新於' : '上次掃描'} {fmtClock(scannedAt)}
           </span>
         </div>
       </div>
@@ -173,7 +187,11 @@ export default function CoinDetail({
           <Stat label="強度" value={coin.strength} cls={strengthCls(coin.strength)} />
           <Stat label="1H" value={fmtPct(coin.change1h)} cls={pctSign(coin.change1h) >= 0 ? 'up' : 'down'} />
           <Stat label="量Z" value={coin.volZ.toFixed(1)} />
-          <Stat label="OI 4h" value={fmtPct(coin.oi4h, 1)} cls={pctSign(coin.oi4h, 1) >= 0 ? 'up' : 'down'} />
+          <Stat
+            label={coin.oiTrusted === false ? 'OI 4h·滯後' : 'OI 4h'}
+            value={fmtPct(coin.oi4h, 1)}
+            cls={coin.oiTrusted === false ? 'muted' : pctSign(coin.oi4h, 1) >= 0 ? 'up' : 'down'}
+          />
           <Stat label={`進場·${ENTRY_KIND_LABEL[plan.kind]}`} value={fmtPrice(plan.entry)} />
           <Stat label="24h量" value={fmtMoney(coin.vol24h)} />
           <Stat
@@ -186,10 +204,13 @@ export default function CoinDetail({
 
       <InsightZone insights={insights} />
 
-      <PricePanel coin={view} sync={sync} tf={tf} onTf={onTf} fills={fills} insights={insights} />
-      <OIPanel coin={view} sync={sync} tf={tf} />
-      <FundingPanel coin={view} sync={sync} tf={tf} />
-      <StrengthPanel coin={view} sync={sync} tf={tf} />
+      {/* F1: theme in the key remounts the charts on a theme switch —
+          lightweight-charts reads css tokens at create time only (cssVar),
+          so without the remount they'd keep the old palette */}
+      <PricePanel key={`price-${theme}`} coin={view} sync={sync} tf={tf} onTf={onTf} fills={fills} insights={insights} />
+      <OIPanel key={`oi-${theme}`} coin={view} sync={sync} tf={tf} />
+      <FundingPanel key={`funding-${theme}`} coin={view} sync={sync} tf={tf} />
+      <StrengthPanel key={`strength-${theme}`} coin={view} sync={sync} tf={tf} />
 
       <div className="signal-strip">
         {SIGNAL_LABELS.map(([key, label]) => (
@@ -230,13 +251,17 @@ export default function CoinDetail({
             <div className="exit-note">
               Runner · 保留 {plan.runnerPct}% 部位，移動停損讓利潤延伸
             </div>
+            <div className="exit-note">
+              老詹式風控參考：妖幣常深洗兼隨大盤殺，止損宜遠 — 低槓桿逐倉（3-5x）以爆倉價作停損，或 +8-10%
+              全止盈食第一段（分級表見策略對照 tab；C 梯對照中）
+            </div>
           </div>
         </section>
       </div>
 
       <div className="footer">
-        {source === 'okx'
-          ? '資料來源 OKX USDT 永續 · 實時 · 圖表 lightweight-charts'
+        {source !== 'demo'
+          ? '資料來源 Binance USDT 永續 · 實時 · 圖表 lightweight-charts'
           : '資料來源 模擬資料（demo）· 圖表 lightweight-charts'}
         <span className="muted"> · 強度與階段為示範性評分，非投資建議</span>
       </div>

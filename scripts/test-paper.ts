@@ -109,5 +109,29 @@ const edge = (sym: string) => new Set([sym]);
   check('curve: one point per drive', c.curve.length, 1, 1e-9);
 }
 
+// ---- C arm (老詹全止盈變體): single all-out TP +9%, far SL −20% ----------
+{
+  let s: PaperState = createPaperState(cfg);
+  s = drivePaper(s, mk('MOON', 1.0), edge('MOON'), T0); // opens in A, B and C books
+  const c0 = s.armC!;
+  check('C open equity', c0.equity, 10000);
+  check('C sl', c0.positions[0].sl, 0.8, 1e-9);
+  check('C tp3', c0.positions[0].tp3, 1.09, 1e-9);
+  check('C size', c0.positions[0].size, 500, 0.001); // 100 risk / 0.20 stop
+
+  // +9% mark → the whole position closes in ONE tp3-branch fill
+  s = drivePaper(s, mk('MOON', 1.09), new Set(), T0 + SLOT);
+  check('C all-out equity', s.armC!.equity, 10045.0); // 500 × 0.09
+  check('C positions closed', s.armC!.positions.length, 0, 1e-9);
+  checkStr('C single-fill action', s.armC!.ledger[s.armC!.ledger.length - 1].action, 'tp3');
+
+  // far SL: straight to 0.80 = exactly −1R
+  let s2: PaperState = createPaperState(cfg);
+  s2 = drivePaper(s2, mk('RUG', 1.0), edge('RUG'), T0);
+  s2 = drivePaper(s2, mk('RUG', 0.8), new Set(), T0 + SLOT);
+  check('C far-SL equity', s2.armC!.equity, 9900.0);
+  check('C SL avgR', paperStats(s2.armC!).avgR, -1, 0.001);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -8,10 +8,11 @@ import type {
   ScreenerSortDir,
   ScreenerSortKey,
   SignalTimes,
+  ThemeName,
   Timeframe,
 } from './types';
-import { fetchFullCoin, getCachedFull, runMicroScan, startScan } from './data/scan';
-import { toLite } from './data/okx';
+import { fetchBtcRegime, fetchFullCoin, getCachedFull, runMicroScan, startScan } from './data/scan';
+import { toLite } from './data/binance';
 import {
   kvGet,
   kvGetFresh,
@@ -30,12 +31,14 @@ import { buildScanRecord, buildSweepMeta } from './lib/recording';
 import { createPaperState, drivePaper, risingFbEdges } from './lib/paper';
 import type { PaperState } from './lib/paper';
 import { hydrateSignalLog } from './lib/signalLog';
+import { top10Ranks } from './lib/rank';
 import ScreenerList from './components/ScreenerList';
 import CoinDetail from './components/CoinDetail';
 import SearchBar from './components/SearchBar';
 import SettingsView from './components/SettingsView';
 import StrategyView from './components/StrategyView';
 import HistoryView from './components/HistoryView';
+import PushWatchView from './components/PushWatchView';
 import BrandMark from './components/BrandMark';
 import type { AppTab } from './components/NavTabs';
 
@@ -48,7 +51,7 @@ const DETAIL_LIVE_MS = 20 * 1000;
 const RECENT_MAX = 20;
 // Continuous scan: after a sweep finishes, chain the next one. A short breather
 // on success (the sweep itself is the real spacing); a longer backoff on
-// error/demo so a dead OKX can't tight-loop.
+// error/demo so a dead exchange can't tight-loop.
 const SCAN_GAP_MS = 2 * 1000;
 const SCAN_ERROR_BACKOFF_MS = 60 * 1000;
 // M1 single-driver window: skip the paper drive if the other process (recorder)
@@ -122,12 +125,25 @@ export default function App() {
   const microRef = useRef<{ coins: CoinLite[]; pinned: Set<string>; source: ScanResult['source'] }>({
     coins: [],
     pinned: new Set(),
-    source: 'okx',
+    source: 'binance',
   });
 
   // M1 paper book (shared with the recorder via kv.json); drives on each
   // completed live sweep and renders as a compact chip in the screener topbar
   const [paper, setPaper] = useState<PaperState | null>(null);
+
+  // F1: 🎀 y2k theme toggle — cosmetics only (theme.css token overrides).
+  // Persisted under kv 'theme' so it survives reloads AND port drift (P0).
+  const [theme, setTheme] = useState<ThemeName>('dark');
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+  const toggleTheme = () =>
+    setTheme((t) => {
+      const next: ThemeName = t === 'y2k' ? 'dark' : 'y2k';
+      void kvSet('theme', next);
+      return next;
+    });
 
   // user-pinned symbols — explicit choice, always float to the top of the list
   const [pinned, setPinned] = useState<Set<string>>(new Set());
@@ -167,6 +183,9 @@ export default function App() {
     kvGet<PaperState>('paper-state').then((p) => {
       if (!cancelled && p) setPaper(p);
     });
+    kvGet<ThemeName>('theme').then((t) => {
+      if (!cancelled && t === 'y2k') setTheme(t);
+    });
     void hydrateSignalLog(); // load the persisted 24h Signal Read history
 
 
@@ -181,10 +200,8 @@ export default function App() {
   // mid-sweep top-10 membership is meaningless while the list is still filling.
   const updateSignalTimes = (coins: CoinLite[]) => {
     const now = Date.now();
-    const sorted = [...coins].sort(
-      (a, b) => b.strength - a.strength || a.symbol.localeCompare(b.symbol),
-    );
-    const top10 = new Set(sorted.slice(0, 10).map((c) => c.symbol));
+    // shared THE-top-10 definition (lib/rank) — same set the screener chip gates on
+    const top10 = new Set(top10Ranks(coins).keys());
     const next: SignalTimes = {};
     for (const c of coins) {
       const prev = sigTimesRef.current[c.symbol] ?? {};
@@ -210,8 +227,14 @@ export default function App() {
           headers: { 'content-type': 'application/json' },
           body,
         }).catch(() => {});
-      post(JSON.stringify(buildScanRecord(coins, tsMs, 'okx')));
-      post(JSON.stringify(buildSweepMeta(coins.length, tsMs, Date.now() - tsMs)));
+      post(JSON.stringify(buildScanRecord(coins, tsMs, 'binance')));
+      // E3: tag the sweep-meta with BTC regime (15min-cached fetch, best-effort —
+      // on failure the meta still posts untagged so recording never blocks on it)
+      void fetchBtcRegime()
+        .catch(() => null)
+        .then((regime) => {
+          post(JSON.stringify(buildSweepMeta(coins.length, tsMs, Date.now() - tsMs, undefined, undefined, { regime })));
+        });
     } catch {
       /* ignore */
     }
@@ -257,7 +280,7 @@ export default function App() {
       if (scanGen.current !== gen) return;
       setProgress(prog);
       // toast newly-fired ⚡ signals as each batch lands (live data only)
-      if (source === 'okx') {
+      if (source !== 'demo') {
         void notifyNewSignals(coins, (sym) => openCoinRef.current(sym));
         if (prog && prog.done === prog.total) {
           // once per 15-min slot only: don't re-save data we already have when
@@ -280,7 +303,7 @@ export default function App() {
       }
       setScan((prev) => {
         // never let a demo fallback overwrite real (cached/previous) data
-        if (source === 'demo' && prev && prev.source === 'okx') return prev;
+        if (source === 'demo' && prev && prev.source !== 'demo') return prev;
         return { coins: sortLite(coins), scannedAt: scanAt, source };
       });
     });
@@ -291,7 +314,7 @@ export default function App() {
       setProgress(null);
       if (!error) {
         setScan((prev) => {
-          if (prev && prev.source === 'okx') void saveCachedScan(prev);
+          if (prev && prev.source !== 'demo') void saveCachedScan(prev);
           return prev;
         });
       }
@@ -322,10 +345,10 @@ export default function App() {
   // never changes). ChartPanels updates via setData rather than remounting,
   // so this doesn't reset the user's pan/zoom or interrupt the crosshair.
   useEffect(() => {
-    if (!detail || scan?.source !== 'okx') return;
+    if (!detail || !scan || scan.source === 'demo') return;
     const symbol = detail.coin.symbol;
     const id = setInterval(() => {
-      fetchFullCoin(symbol, 'okx')
+      fetchFullCoin(symbol, 'binance')
         .then((fresh) => {
           if (wantDetail.current !== symbol) return; // navigated away meanwhile
           setDetail((prev) => (prev && prev.coin.symbol === symbol ? { ...prev, coin: fresh, at: Date.now() } : prev));
@@ -364,22 +387,27 @@ export default function App() {
   // replaces it in the background (2-min cooldown); no cache -> fetch overlay.
   const openCoin = (symbol: string) => {
     const origin = tab;
-    const source = scan?.source ?? 'okx';
+    const source = scan?.source ?? 'binance';
     markViewed(symbol);
     wantDetail.current = symbol;
     setFetchErr(undefined);
 
     void (async () => {
-      const cached = source === 'okx' ? await getCachedFull(symbol) : null;
+      const cached = source !== 'demo' ? await getCachedFull(symbol) : null;
       if (wantDetail.current !== symbol) return;
+      // A scan-cached full has NO long series (the sweep only carries the 48h
+      // base), so 1h/4h would sit on the 2-day fallback — never let the
+      // freshness/cooldown short-circuits keep that on screen; only a cache
+      // that already carries `long` counts as complete enough to skip a fetch.
+      const cachedComplete = cached != null && cached.coin.long != null;
       if (cached) {
         setDetail({ coin: cached.coin, at: cached.at, origin });
-        if (Date.now() - cached.at < COIN_REFRESH_COOLDOWN_MS) return;
-      } else if (source === 'okx') {
+        if (cachedComplete && Date.now() - cached.at < COIN_REFRESH_COOLDOWN_MS) return;
+      } else if (source !== 'demo') {
         setFetching(symbol);
       }
       const now = Date.now();
-      if (source === 'okx' && now - (lastCoinFetch.current[symbol] ?? 0) < COIN_REFRESH_COOLDOWN_MS && cached) {
+      if (source !== 'demo' && now - (lastCoinFetch.current[symbol] ?? 0) < COIN_REFRESH_COOLDOWN_MS && cachedComplete) {
         return;
       }
       lastCoinFetch.current[symbol] = now;
@@ -405,7 +433,7 @@ export default function App() {
   // mid-slot ⚡ (caught in ~75s instead of up to 14 min). Live-source + visible
   // tab only; never touches rubik (fetchLiveCoinWarm skips cold coins); does NOT
   // re-rank the list — onFire only flips the ⚡ flag + notifies + sets the age.
-  microRef.current = { coins: scan?.coins ?? [], pinned, source: scan?.source ?? 'okx' };
+  microRef.current = { coins: scan?.coins ?? [], pinned, source: scan?.source ?? 'binance' };
   useEffect(() => {
     let stopped = false;
     let backoffUntil = 0;
@@ -429,7 +457,7 @@ export default function App() {
     const run = async () => {
       if (stopped) return;
       const { coins, pinned: pins, source } = microRef.current;
-      if (source === 'okx' && document.visibilityState === 'visible' && coins.length) {
+      if (source !== 'demo' && document.visibilityState === 'visible' && coins.length) {
         // pinned ∪ strength top-20 (coins is strength-sorted), cap 25, and skip
         // the open-detail coin (its 20s poll already covers it).
         const top20 = coins.slice(0, 20).map((c) => c.symbol);
@@ -498,11 +526,21 @@ export default function App() {
         tf={tf}
         onTf={setTf}
         onBack={closeDetail}
-        backLabel={detail.origin === 'search' ? '← 返回搜尋' : '← 返回掃描列表'}
+        backLabel={
+          detail.origin === 'pushes'
+            ? '← 返回推送監察'
+            : detail.origin === 'history'
+              ? '← 返回記錄'
+              : detail.origin === 'strategy'
+                ? '← 返回策略'
+                : '← 返回掃描列表'
+        }
         times={sigTimes[detail.coin.symbol]}
         pinned={pinned.has(detail.coin.symbol)}
         onTogglePin={() => togglePin(detail.coin.symbol)}
         paper={paper}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
     );
   }
@@ -564,6 +602,21 @@ export default function App() {
     );
   }
 
+  if (tab === 'pushes') {
+    return (
+      <>
+        <PushWatchView
+          tab={tab}
+          onTab={switchTab}
+          coins={scan.coins}
+          source={scan.source}
+          onSelect={openCoin}
+        />
+        {searchOverlay}
+      </>
+    );
+  }
+
   return (
     <>
     <ScreenerList
@@ -580,7 +633,7 @@ export default function App() {
       onRegimeToggle={toggleRegime}
       minVol={minVol}
       onMinVol={setMinVol}
-      paper={scan.source === 'okx' ? paper : null}
+      paper={scan.source !== 'demo' ? paper : null}
       sigTimes={sigTimes}
       pinned={pinned}
       onTogglePin={togglePin}
@@ -588,6 +641,8 @@ export default function App() {
       onTab={switchTab}
       onSelect={openCoin}
       onRefresh={refresh}
+      theme={theme}
+      onToggleTheme={toggleTheme}
     />
     {searchOverlay}
     </>

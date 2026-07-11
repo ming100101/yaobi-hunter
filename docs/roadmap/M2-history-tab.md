@@ -44,8 +44,8 @@
 ## Acceptance checklist
 - [x] `/recordings` endpoint in BOTH server.cjs and vite; range-capped. *(already landed with M3)*
 - [x] evalCore shared by CLI and UI; CLI table byte-identical. *(verified: eval-rec JSON + table diff = IDENTICAL post-extraction)*
-- [~] Journal / lift / scrubber / paper / replay all functional on real recordings. *(session 1: journal + lift done; scrubber / paper / replay = session 2)*
-- [ ] Replay honestly labeled: feature-level 重跑,唔係完整序列回測. *(session 2 — replay panel deferred)*
+- [x] Journal / lift / scrubber / paper / replay all functional on real recordings. *(session 2 complete, 2026-07-07)*
+- [x] Replay honestly labeled: feature-level 重跑,唔係完整序列回測. *(disclaimer 掛喺 panel 底 + 不適用 N 計數)*
 
 ## Results — Session 1 (evalCore extraction + journal + lift), 2026-07-05
 
@@ -63,6 +63,13 @@ M2's endpoint (Step 1) was already built by M3 (`/recordings` in vite.config.ts 
 **Not verified in-browser**: the actual render of the two tables (port 5173 held by a concurrent dev server; shared vite config untouched). Data is proven correct; the tables reuse existing `.card`/grid patterns.
 
 **Session 2 (remaining)**: TimelineScrubber (slot slider → top-10 time machine), PaperPanel (equity curve from `paper-state`), ReplayPanel (feature-predicate builder → custom-state lift, honestly labeled feature-level).
+
+## Results — Session 2 (scrubber + equity curve + replay), 2026-07-07
+
+- **TimelineScrubber**: `<input type="range">` over `idx.slots` → 該格強度 top-10(當時價/強度/階段/⚡蓄 chips),row-click 開 detail。新 range snap 返最新格。實測 318 格(07-04→07-07),最新格 top-10 同當刻 screener 一致(EVAA 1.4817 str 80 排 #3)。
+- **Equity curve + stats**(入咗模擬盤 section,per-arm A/B/C):lightweight-charts line over `PaperState.curve`(同秒去重、起點虛線),stats chips 用現成 `paperStats`。實測 A 臂 $10,000→$9,138(-8.6%),同 topbar chip 一致 ✓;勝率 15%、PF 0.03、MDD 9.1% — 誠實見血。
+- **ReplayPanel**:五欄特徵門檻(量Z≥/OI4h≤/位置≤/|費率|≤/基差≤,留空=不限)砌 predicate → evalCore `risingEdges`+`forward`+`summarize`(零自家 eval 數學)vs 同範圍基準;preset「⚡近似」「蓄 setup 近似」(明標近似)。null 特徵 → predicate false + 「不適用 N」計數(實測 40,296 筆 — OKX 年代行冇 idx≥21/現貨欄)。實測 preset 128ms 出結果(1670 events,24h lift ×1.29),遠快過 3s 指標。特徵級 disclaimer 掛 panel 底。
+- typecheck ✓;evalCore 本 session 零改動(CLI byte-identical 保證不變);瀏覽器實測全部 render + 互動,零 console error(HMR 一次性 artifact 除外,reload 後重演唔到)。
 
 ## 陷阱 / Do-NOT
 - Do NOT rewrite the eval math in the UI — ONE implementation (evalCore) or the CLI and tab will drift and produce two different truths.

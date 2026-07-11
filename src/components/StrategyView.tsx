@@ -6,6 +6,7 @@ import {
   type Fill,
   type SideStats,
   type StratDay,
+  type StratMode,
   type StratTrade,
 } from '../lib/strategyReport';
 import { fmtClock, fmtPrice } from '../lib/format';
@@ -38,6 +39,7 @@ const nLabel = (l: number, s: number) => (l === s ? String(l || 0) : `${l}/${s}`
 const FILL_LABEL: Record<Fill['kind'], string> = {
   tp1: 'TP1',
   tp2: 'TP2',
+  allout: '全出',
   sl: 'SL',
   eod: '收盤',
   mark: '持倉中',
@@ -89,9 +91,12 @@ function TradeBlock({ label, trades, skipped }: { label: string; trades: StratTr
 }
 
 export default function StrategyView({ tab, onTab }: Props) {
-  const [days, setDays] = useState<StratDay[] | null>(null);
+  // both exit modes are built from the same parse so the toggle swaps instantly
+  const [reports, setReports] = useState<Record<StratMode, StratDay[]> | null>(null);
+  const [mode, setMode] = useState<StratMode>('ladder');
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const [expanded, setExpanded] = useState<number | null>(null);
+  const days = reports ? reports[mode] : null;
 
   const load = useCallback(async () => {
     try {
@@ -99,16 +104,19 @@ export default function StrategyView({ tab, onTab }: Props) {
       const res = await fetch(`/recordings?from=${ymd(now - DAYS * DAY_MS)}&to=${ymd(now)}`);
       if (!res.ok) {
         setStatus('empty');
-        setDays([]);
+        setReports({ ladder: [], allout: [] });
         return;
       }
       const idx = parseRecordings(await res.text());
       if (idx.slots.length === 0) {
         setStatus('empty');
-        setDays([]);
+        setReports({ ladder: [], allout: [] });
         return;
       }
-      setDays(buildDailyReport(idx, DAYS, now));
+      setReports({
+        ladder: buildDailyReport(idx, DAYS, now, 'ladder'),
+        allout: buildDailyReport(idx, DAYS, now, 'allout'),
+      });
       setStatus('ready');
     } catch {
       setStatus('error');
@@ -180,6 +188,14 @@ export default function StrategyView({ tab, onTab }: Props) {
 
       {status === 'ready' && days && (
         <>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <button type="button" className={`fb-toggle${mode === 'ladder' ? ' on' : ''}`} onClick={() => setMode('ladder')}>
+              階梯出場 TP1/TP2
+            </button>
+            <button type="button" className={`fb-toggle${mode === 'allout' ? ' on' : ''}`} onClick={() => setMode('allout')}>
+              +200% 全出(首訊號)
+            </button>
+          </div>
           <div className="strat-summary-grid">
             <SummaryCard title="尋日 ⚡ 多" s={sideStats(yFb.long)} />
             <SummaryCard title="尋日 ⚡ 空" s={sideStats(yFb.short)} />
@@ -265,8 +281,23 @@ export default function StrategyView({ tab, onTab }: Props) {
               })}
             </div>
             <div className="strat-method muted">
-              20x 槓桿:幣價 ±5% = 保證金 ±100%。TP1(幣 +5%)出本金、TP2(+10%)出餘半、SL(−5%)清零、餘倉日終平。以 15
-              分鐘記錄價觸發、SL 優先(偏保守);未計費用/資金費率/爆倉緩衝;穩定幣剔除;正反手各自行路徑(參數鏡像但結果唔對稱)。非投資建議。
+              {mode === 'ladder'
+                ? '20x 槓桿:幣價 ±5% = 保證金 ±100%。TP1(幣 +5%)出本金、TP2(+10%)出餘半、SL(−5%)清零、餘倉日終平。'
+                : '20x 槓桿:幣價 ±10% = 保證金 +200% 一次全出;SL(幣 −5%)= 爆倉式清零;每幣每日只入第一個訊號(首訊號 = 開倉時點,SL 後不重入);未觸發嘅倉日終平。'}
+              以 15 分鐘記錄價觸發、SL 優先(偏保守);未計費用/資金費率/爆倉緩衝;穩定幣剔除;正反手各自行路徑(參數鏡像但結果唔對稱)。非投資建議。
+            </div>
+          </div>
+
+          <div className="card strat-footer">
+            <div className="strat-foot-head">參考:老詹倉位分級 + 風控框架(試用群 2026-07-06,個人研究用)</div>
+            <div className="strat-method">
+              上車準備 → 小倉 · 接人 → 補倉小倉 · 蓄力加倉 → 加倉 · 跑車/火箭加倉 → 正常倉
+            </div>
+            <div className="strat-method muted">
+              風控:妖幣常等啟動/埋伏/深洗,遇 BTC/ETH 急跌會一齊踩,所以止損放遠 — 低槓桿逐倉(3-5x)以爆倉價作天然停損,用倉位大小控風險金額;勝率守五成以上靠
+              25-50%+ 行程食大魚。變體:全部設 8-10% 全止盈食第一段(=模擬盤 C 梯,2026-07-06 起與 A/B
+              梯同場對照;注意 +9%/−20% 要勝率 &gt;69% 先打和 — 佢「勝率更高」嘅講法由對照帳答)。大盤急跌時降倉、放慢進場。參考資訊非本 app
+              驗證訊號,非投資建議。
             </div>
           </div>
         </>

@@ -54,6 +54,8 @@ function flushBaseContext(
   const f1 = aggregateLast(fundingHist, 12);
   const n = c1.length;
   if (n < FB_BASE_HOURS + 8) return null;
+  // throttled partial coin (oi/funding shorter than candles) — fail closed
+  if (o1.length < n || f1.length < n) return null;
 
   // OI flush: current OI well below the window (~48h) high, but turning up
   let oiMax = 0;
@@ -97,6 +99,98 @@ export function detectFlushBreakout(
   if (z < FB_VOLZ) return null;
 
   return { oiDropPct: ctx.oiDropPct, volZ1h: z };
+}
+
+// ---- S14 早期拉盤 initiation (detect the markup BEFORE the base-high break) ----
+// Runs on the NATIVE 5m grid (unlike ⚡, which aggregates to 1H). Definition FROZEN
+// to match scripts/backtest5m.ts signalEarlyAt exactly (eval=live, verified
+// bar-for-bar). DOWNGRADED to recording-only 2026-07-08 after a 6-agent adversarial
+// verification (docs/roadmap/S14-early-pump.md Results):
+//   • the ×1.73 lift is ~95% a geometry/location artifact — it just samples coins
+//     in the upper 24h range near the high; true INCREMENTAL lift over a state-
+//     matched baseline is only ×1.03-1.10 (crypto-only headline ×1.60 vs unconditional).
+//   • the "~6.5h lead" was a 24h-window artifact; true same-move lead ~1.2h.
+//   • expectancy ~0 on 05/06 (median retH −0.6%, +10/−5 TP/SL loses −0.38%/trade
+//     after fees, carried by 1-3 outlier coins) — a ranking filter, NOT an entry edge.
+// By this project's own precedent (×1.61 demoted as selection noise) that is not
+// badge/notify-worthy. So EARLY_PUMP_SHIPPED=false ⇒ NO 「早」badge, NO notify.
+// detectEarlyPump is still computed + recorded (RecCoin idx24) so a CORRECTED,
+// state-matched re-test (E1/harness) can revisit it on live-era data.
+export const EARLY_PUMP_SHIPPED = false;
+const EP_WIN = 288; // 24h in 5m bars
+const EP_BELOW_MIN = 2; // ≥ this % below the 24h high (still pre-breakout)
+const EP_BELOW_MAX = 12; // ≤ this % below (close enough to matter)
+const EP_POS_MIN = 0.5; // pos in the 24h range (upper/markup half)
+const EP_RET4_CAP = 5; // ret over last 4 bars ∈ (0, cap%] — rising, anti-chase
+const EP_VOLZ = 1.5; // first volume-impulse z (over the 288-bar window)
+
+export function detectEarlyPump(candles: Candle[], volume: VolumeBar[]): boolean {
+  const n = candles.length;
+  if (n < EP_WIN + 1 || volume.length < n) return false;
+  const i = n - 1;
+  let hi = -Infinity;
+  let lo = Infinity;
+  for (let j = i - EP_WIN; j < i; j++) {
+    if (candles[j].high > hi) hi = candles[j].high;
+    if (candles[j].low < lo) lo = candles[j].low;
+  }
+  const c = candles[i].close;
+  if (!(hi > 0) || !(lo > 0) || !(hi > lo)) return false;
+  const below = (hi / c - 1) * 100; // % below the 24h high
+  if (!(below >= EP_BELOW_MIN && below <= EP_BELOW_MAX)) return false;
+  const pos = (c - lo) / (hi - lo);
+  if (!(pos >= EP_POS_MIN)) return false;
+  if (!(c > candles[i - 12].close)) return false; // rising over the last hour
+  const ret4 = (c / candles[i - 4].close - 1) * 100;
+  if (!(ret4 > 0 && ret4 <= EP_RET4_CAP)) return false; // rising, anti-chase
+  // volZ over the prior 288 bars (quote volume), z of the current bar — same as
+  // the harness volZAt(_, 288)
+  let sum = 0;
+  for (let j = i - EP_WIN; j < i; j++) sum += volume[j].value;
+  const m = sum / EP_WIN;
+  let vs = 0;
+  for (let j = i - EP_WIN; j < i; j++) vs += (volume[j].value - m) ** 2;
+  const sd = Math.sqrt(vs / EP_WIN);
+  const vz = sd > 0 ? (volume[i].value - m) / sd : 0;
+  return vz >= EP_VOLZ;
+}
+
+// ---- 5分鐘點火 (5-minute ignition) ------------------------------------------
+// The REAL answer to "detect earlier" (2026-07-09): the whole 1H-based suite
+// bakes in up to 60 min of lateness because a 1H bar can't report a pump until
+// the hour CLOSES. But pumps RAMP over ~25-40 min — verified minute-by-minute on
+// SKYAI (+42% 1H bar was +10% by 03:14, +24%@vol-blast 03:31) and KAITO (+32% bar
+// was +11% by 11:24, $6.1M/min blast at 11:34/+23%). Firing on the 5m ramp catches
+// the SAME pump 15-55 min earlier: replay first-fire = SKYAI 03:05 +6% (vs 1H +42%,
+// 55 min earlier), KAITO 11:30 +23% (30 min), EVAA 09:45 +22% (15 min); never later
+// than 1H. Runs on the existing 5m candles — no extra fetch. See
+// docs/roadmap/reports/FIVE-MIN-IGNITION-2026-07-09.md.
+// BADGE tier (on-screen, real-time) is ON. Phone NOTIFICATION stays gated until the
+// false-positive rate is measured across the universe (fast clock = more fizzle fires).
+export const IGNITION_SHIPPED = true;
+const IGN_RET15_MIN = 6; // % gain over the last 3 five-min bars (~15 min ramp)
+const IGN_VOL_RATIO = 3; // current 5m quote-vol ÷ median of the prior 8 bars
+const IGN_TURNOVER_MIN = 300_000; // current-bar quote turnover floor (USD) — kills dust
+const IGN_RET60_MAX = 60; // % over last 12 bars — skip coins already blown off the top
+
+export function detectIgnition(candles: Candle[], volume: VolumeBar[]): boolean {
+  const n = candles.length;
+  if (n < 13 || volume.length < n) return false;
+  const i = n - 1;
+  const c = candles[i].close;
+  if (!(c > 0) || !(candles[i - 3].close > 0) || !(candles[i - 12].close > 0)) return false;
+  const ret15 = (c / candles[i - 3].close - 1) * 100;
+  if (!(ret15 >= IGN_RET15_MIN)) return false;
+  const ret60 = (c / candles[i - 12].close - 1) * 100;
+  if (!(ret60 <= IGN_RET60_MAX)) return false;
+  const curVol = volume[i].value;
+  if (!(curVol >= IGN_TURNOVER_MIN)) return false;
+  // volume blast: current 5m quote-vol vs the median of the prior 8 complete bars
+  const prior = volume.slice(i - 9, i - 1).map((v) => v.value).sort((a, b) => a - b);
+  if (prior.length < 4) return false;
+  const medVol = prior[Math.floor(prior.length / 2)] || 0;
+  if (!(medVol > 0) || !(curVol / medVol >= IGN_VOL_RATIO)) return false;
+  return true;
 }
 
 // ---- 早期蓄力 (early-accumulation watchlist) --------------------------------
@@ -167,7 +261,9 @@ export function featureVector(
   const buyShare4h =
     tot4h > 0 ? last4h.filter((v) => v.up).reduce((a, v) => a + v.value, 0) / tot4h : 0.5;
 
-  const f8h = f15[at(33)].value;
+  // funding can be shorter than candles on throttled partial coins; a missing
+  // point reads as 0, matching getFunding's flat-0 resample of an empty history
+  const f8h = f15[at(33)]?.value ?? 0;
 
   // Bollinger bandwidth percentile across the window (interpret.buildCtx)
   const widths: number[] = [];
@@ -242,8 +338,10 @@ export function computeStrengthSeries(
     }
     const c = candles[i].close;
     const ret4 = c / candles[Math.max(0, i - h4)].close - 1;
-    const oiRef = oi[Math.max(0, i - h4)].value;
-    const oi4 = oiRef > 0 ? oi[i].value / oiRef - 1 : 0;
+    // oi/funding may be shorter than candles on throttled partial coins;
+    // missing points contribute neutrally instead of throwing
+    const oiRef = oi[Math.max(0, i - h4)]?.value ?? 0;
+    const oi4 = oiRef > 0 && oi[i] ? oi[i].value / oiRef - 1 : 0;
     const pos = rangePos(candles, i, w);
 
     const vs = Math.max(0, i - w);
@@ -260,7 +358,7 @@ export function computeStrengthSeries(
       if (volume[j].up) up += volume[j].value;
     }
     const buyShare = tot > 0 ? up / tot : 0.5;
-    const fund = funding[i].value;
+    const fund = funding[i]?.value ?? 0;
 
     const val =
       50 +
@@ -335,6 +433,11 @@ export interface AnalyzeInput {
   volume: VolumeBar[];
   oi: SeriesPoint[];
   fundingHist: SeriesPoint[];
+  // P1: a trustworthy recent 4h OI %change from the warm store, computed by the
+  // data layer. When present it overrides the oi4h derived from the (cold-path,
+  // laggy) `oi` series for the oi4h field + the OI-gated signals. Absent on demo/
+  // test paths, where the series value is used unchanged.
+  oi4hLive?: number;
 }
 
 export interface Derived {
@@ -342,6 +445,8 @@ export interface Derived {
   strength: number;
   change1h: number;
   oi4h: number;
+  oiTrusted: boolean; // P1: false ⇒ oi4h is the laggy series value; OI-gated signals fail closed
+  f24h: number; // R3: funding 24h ago (%), same f15[at(97)] window as interpret buildCtx
   funding: number;
   volZ: number;
   vol24h: number;
@@ -352,7 +457,7 @@ export interface Derived {
   strengthHist: SeriesPoint[];
 }
 
-export function analyze({ candles, volume, oi, fundingHist }: AnalyzeInput): Derived {
+export function analyze({ candles, volume, oi, fundingHist, oi4hLive }: AnalyzeInput): Derived {
   const strengthHist = computeStrengthSeries(candles, volume, oi, fundingHist, 12);
 
   // stable metrics on the 15m aggregation (the scanner's native resolution)
@@ -366,8 +471,18 @@ export function analyze({ candles, volume, oi, fundingHist }: AnalyzeInput): Der
   const last = c15[M - 1].close;
   const change1h = (last / c15[at(5)].close - 1) * 100;
   const ret4h = last / c15[at(17)].close - 1;
-  const oiRef = oi15[at(17)].value;
-  const oi4h = oiRef > 0 ? (oi15[M - 1].value / oiRef - 1) * 100 : 0;
+  // oi15/f15 can be shorter than c15 on throttled partial coins (the scan-path
+  // funding fetch falls back to [] on 429); missing points read as 0 — the same
+  // degradation getFunding already documents for an empty funding history.
+  const oiRef = oi15[at(17)]?.value ?? 0;
+  const oi4hSeries = oiRef > 0 && oi15[M - 1] ? (oi15[M - 1].value / oiRef - 1) * 100 : 0;
+  // P1: prefer the store-derived recent OI (fresh) over the laggy series. When
+  // only the series is available the VALUE is still shown (UI tags it 滯後) and
+  // regime scoring keeps using it as a soft input, but every boolean OI gate
+  // below fails closed — the ARX/ADA failure mode was gates firing on a frozen
+  // series value, never the display itself.
+  const oiTrusted = oi4hLive != null;
+  const oi4h = oi4hLive ?? oi4hSeries;
 
   const vols = v15.map((v) => v.value);
   const prior = vols.slice(at(97), M - 1);
@@ -375,7 +490,8 @@ export function analyze({ candles, volume, oi, fundingHist }: AnalyzeInput): Der
   const volZ = vsd > 0 ? (vols[M - 1] - vm) / vsd : 0;
   const vol24h = vols.slice(at(96)).reduce((a, b) => a + b, 0);
 
-  const funding = f15[M - 1].value;
+  const funding = f15[M - 1]?.value ?? 0;
+  const f24h = f15[at(97)]?.value ?? 0; // R3: mirror interpret buildCtx exactly (interpret.ts f24h window)
 
   const w = c15.slice(at(96));
   const lo = Math.min(...w.map((c) => c.low));
@@ -390,15 +506,15 @@ export function analyze({ candles, volume, oi, fundingHist }: AnalyzeInput): Der
   const regime = classify({ pos, change1h, ret4h, oi4h, funding, volZ, buyShare: buyShare4h });
 
   const signals: Signals = {
-    fundsFirst: pos < 0.5 && oi4h > 1.2,
+    fundsFirst: oiTrusted && pos < 0.5 && oi4h > 1.2,
     mildRise: change1h > 0.2 && change1h < 3.2,
-    oiHealthy: oi4h > 0.8 && oi4h < 14,
+    oiHealthy: oiTrusted && oi4h > 0.8 && oi4h < 14,
     buyHealthy: buyShare4h > 0.55,
   };
 
   const riskFlags: string[] = [];
   if (funding > 0.05) riskFlags.push('資金費率過熱');
-  if (oi4h > 20) riskFlags.push('OI 4h 增速過快');
+  if (oiTrusted && oi4h > 20) riskFlags.push('OI 4h 增速過快');
   if (regime === 'pump' && ret4h > 0.12) riskFlags.push('離進場價過遠，追高風險');
   if (pos > 0.72 && volZ > 1 && change1h < 0) riskFlags.push('高位放量滯漲');
   if (buyShare4h < 0.42) riskFlags.push('主動買盤枯竭');
@@ -443,6 +559,8 @@ export function analyze({ candles, volume, oi, fundingHist }: AnalyzeInput): Der
     strength: Math.round(strengthHist[strengthHist.length - 1].value),
     change1h,
     oi4h,
+    oiTrusted,
+    f24h,
     funding,
     volZ,
     vol24h,

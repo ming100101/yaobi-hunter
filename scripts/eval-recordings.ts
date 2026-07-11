@@ -18,17 +18,36 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { recordingsDir } from './recordFile';
-import { parseRecordings, runEval } from '../src/lib/evalCore';
+import { parseRecordings, runEval, type EvalSource, type Regime3 } from '../src/lib/evalCore';
 
 // ---- args ----
 let dir = recordingsDir();
 let target = 10; // % MFE for hit-rate
 let json = false;
+let lead = false; // S4d: print the full lead-time distribution per state
+let source: EvalSource = 'auto'; // seam filter: default to the newest era present
+let regime: Regime3 | undefined; // E3: BTC-regime filter (up|down|chop); undefined = all
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--dir') dir = argv[++i];
   else if (argv[i] === '--target') target = Number(argv[++i]);
   else if (argv[i] === '--json') json = true;
+  else if (argv[i] === '--lead') lead = true;
+  else if (argv[i] === '--regime') {
+    const v = argv[++i];
+    if (v !== 'up' && v !== 'down' && v !== 'chop') {
+      console.error(`bad --regime ${v} (up|down|chop)`);
+      process.exit(1);
+    }
+    regime = v;
+  } else if (argv[i] === '--source') {
+    const v = argv[++i];
+    if (v !== 'auto' && v !== 'all' && v !== 'okx' && v !== 'binance') {
+      console.error(`bad --source ${v} (auto|all|okx|binance)`);
+      process.exit(1);
+    }
+    source = v;
+  }
 }
 
 // ---- load (fs) → shared parse/index core ----
@@ -51,7 +70,8 @@ if (slots.length < 2) {
 }
 
 // all eval math (forward walk, summarise, states, baseline) lives in evalCore now
-const results: any = { dir, ...runEval(idx, target) };
+const results: any = { dir, ...runEval(idx, target, source, regime) };
+const regimeTagged = idx.regimeAt.size; // E3: how many slots carry a regime tag
 
 // ---- output ----
 if (json) {
@@ -59,20 +79,47 @@ if (json) {
 } else {
   const pc = (x: number) => `${(x * 100).toFixed(1)}%`;
   console.log(`\n=== recorded-signal lift (${dir}) ===`);
-  console.log(`${slots.length} unique slots, ~${(results.spanHours / 24).toFixed(1)}d span, MFE target +${target}%`);
+  const eras = idx.sourcesPresent.join('+') || 'none';
+  console.log(
+    `era ${results.source}${source === 'auto' ? ' (auto=newest)' : ''} · sources present ${eras} · ${results.uniqueSlots} unique slots, ~${(results.spanHours / 24).toFixed(1)}d span, MFE target +${target}%`,
+  );
+  if (results.source === 'all' && idx.sourcesPresent.length > 1)
+    console.log('⚠️  --source all blends the OKX→Binance venue seam — lift mixes two regimes (see ROADMAP 統計 seam).');
+  if (regime) console.log(`regime filter: BTC ${regime} · baseline+events both restricted to ${regime} slots (untagged/pre-E3 excluded)`);
+  else if (regimeTagged) console.log(`(${regimeTagged} slots carry a BTC-regime tag — use --regime up|down|chop to stratify)`);
   const b4 = results.baseline.h4;
   const b24 = results.baseline.h24;
   console.log(`\nbaseline (all obs):  4h hit ${pc(b4.hit)} meanMFE ${pc(b4.meanMfe)} | 24h hit ${pc(b24.hit)} meanMFE ${pc(b24.meanMfe)}`);
   console.log('');
-  console.log('state              events | 4h: hit  lift  meanMFE | 24h: hit  lift  meanMFE');
+  // S4d: lead = median 15-min slots the state fired BEFORE the move started (bigger
+  // = earlier). Shown in hours for readability; n = events with a move to measure.
+  const hrs = (slotsN: number) => `${(slotsN * 0.25).toFixed(1)}h`;
+  console.log('state              events | 4h: hit  lift  meanMFE | 24h: hit  lift  meanMFE | lead med(n)');
   for (const [key, r] of Object.entries<any>(results.states)) {
     const l4 = b4.hit > 0 ? r.h4.hit / b4.hit : 0;
     const l24 = b24.hit > 0 ? r.h24.hit / b24.hit : 0;
+    const ld = r.lead;
     console.log(
       `${key.padEnd(18)} ${String(r.events).padStart(6)} | ` +
         `${pc(r.h4.hit).padStart(6)} ${('×' + l4.toFixed(2)).padStart(6)} ${pc(r.h4.meanMfe).padStart(8)} | ` +
-        `${pc(r.h24.hit).padStart(6)} ${('×' + l24.toFixed(2)).padStart(6)} ${pc(r.h24.meanMfe).padStart(8)}`,
+        `${pc(r.h24.hit).padStart(6)} ${('×' + l24.toFixed(2)).padStart(6)} ${pc(r.h24.meanMfe).padStart(8)} | ` +
+        `${(ld && ld.n ? hrs(ld.med) : '—').padStart(6)}(${ld ? ld.n : 0})`,
     );
+  }
+  if (lead) {
+    console.log('\nS4d lead-time distribution (15-min slots before move-start; move = 25% to target):');
+    console.log('state              n   p25    med    p75    ≤30min-before');
+    for (const [key, r] of Object.entries<any>(results.states)) {
+      const ld = r.lead;
+      if (!ld || !ld.n) {
+        console.log(`${key.padEnd(18)} ${String(ld ? ld.n : 0).padStart(3)}   (no move-reaching events)`);
+        continue;
+      }
+      console.log(
+        `${key.padEnd(18)} ${String(ld.n).padStart(3)}  ${hrs(ld.p25).padStart(5)}  ${hrs(ld.med).padStart(5)}  ${hrs(ld.p75).padStart(5)}  ${pc(ld.late2).padStart(6)}`,
+      );
+    }
+    console.log('(measures the SIGNAL\'s structural earliness vs the move — NOT delivery latency, which is micro-scan/SignalTimes)');
   }
   console.log('\n(small samples until months accumulate — mechanism check, not statistics)');
 }

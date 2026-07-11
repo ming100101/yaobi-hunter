@@ -1,6 +1,7 @@
 // Standalone runtime for the packaged app: serves the built dist/ (from SEA
 // assets when running as a single executable, from disk in dev), proxies
-// /okx/* and /bnv/* upstream so the browser stays same-origin, and presents
+// /bnf/* (fapi.binance.com) and /bns/* (api.binance.com) upstream so the
+// browser stays same-origin, and presents
 // itself as a desktop app: the visible console respawns itself hidden, then
 // launches Edge/Chrome in --app mode with a dedicated profile — closing that
 // window shuts the whole thing down. CJS on purpose — Node SEA requires it.
@@ -291,9 +292,13 @@ function proxyTo(hostname, prefix, req, res, pathBase = '') {
       headers: { accept: '*/*', 'user-agent': 'yaobi-hunter/1.0' },
     },
     (ur) => {
-      res.writeHead(ur.statusCode || 502, {
-        'content-type': ur.headers['content-type'] || 'application/octet-stream',
-      });
+      // forward Binance's rate-limit telemetry — the client's weight guard
+      // (bnGet in src/data/binance.ts) reads these to pace itself
+      const fwd = { 'content-type': ur.headers['content-type'] || 'application/octet-stream' };
+      for (const h of ['x-mbx-used-weight', 'x-mbx-used-weight-1m', 'retry-after']) {
+        if (ur.headers[h]) fwd[h] = ur.headers[h];
+      }
+      res.writeHead(ur.statusCode || 502, fwd);
       ur.pipe(res);
     },
   );
@@ -316,11 +321,8 @@ const server = http.createServer((req, res) => {
     res.end(PING_TOKEN);
     return;
   }
-  if (rawUrl.startsWith('/okx/')) return proxyTo('www.okx.com', '/okx', req, res);
-  if (rawUrl.startsWith('/bnv/')) {
-    // S3 XML listing endpoint for the Binance public data bucket
-    return proxyTo('s3-ap-northeast-1.amazonaws.com', '/bnv', req, res, '/data.binance.vision');
-  }
+  if (rawUrl.startsWith('/bnf/')) return proxyTo('fapi.binance.com', '/bnf', req, res);
+  if (rawUrl.startsWith('/bns/')) return proxyTo('api.binance.com', '/bns', req, res);
   if (rawUrl === '/record' && req.method === 'POST') return appendRecord(req, res);
   if (rawUrl === '/kv' && (req.method === 'GET' || req.method === 'POST')) return handleKv(req, res);
   if (rawUrl === '/notify-detect-chat' && req.method === 'POST') return handleNotifyDetect(req, res);
@@ -490,7 +492,7 @@ function listen() {
     if (e && e.code === 'EADDRINUSE') {
       // Single-instance guard: if OUR app already owns this port, don't spin up
       // a second server (two servers = two 15-min scans fighting for the same
-      // OKX rate-limit budget). Point a window at the existing one and exit.
+      // Binance per-IP rate budget). Point a window at the existing one and exit.
       probeExisting(port, (existingUrl) => {
         if (existingUrl) {
           console.log(`already running at ${existingUrl} — opening another window there`);

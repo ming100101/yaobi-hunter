@@ -19,8 +19,15 @@
 - Sweep-meta lines carry `btcRegime`; `npm run eval-rec -- --regime chop` runs and reports fewer slots than unfiltered.
 
 ## Acceptance
-- [ ] Fixed ±5%/7d rule, one cheap request, cached.
-- [ ] Meta tagged by both writers; eval filter works with matched baseline.
+- [x] Fixed ±5%/7d rule, one cheap request, cached. — `getBtcRegime(bn)` in `binance.ts`(`/fapi/v1/klines?symbol=BTCUSDT&interval=1h&limit=200`,ret7d over 168h,module-cache 15min)。
+- [x] Meta tagged by both writers; eval filter works with matched baseline. — recorder.ts + App.tsx(via scan.ts `fetchBtcRegime`)都 fetch 咗 pass 入 `buildSweepMeta` extra.regime → `SweepMeta.btcRegime/btcRet7d`。evalCore `parseRecordings` 建 `regimeAt` map,`runEval(idx,target,source,regime)` **同時**過濾 baseline + events(untagged/pre-E3 slot 排除)。CLI `--regime up|down|chop`。
+
+## Results — ✅ shipped 2026-07-08(/loop autonomous)
+- `npm run test-regime` 全綠:writer 標記、null→untagged、regimeAt index、`--regime` 過濾(up/down 各 2 slots vs 全 4)、regime field、live fetch。
+- **實測 live BTC regime = up(ret7d +9.05%)**(2026-07-08 深夜)。
+- typecheck 綠;test-eval-seam 未受影響。
+- **注意**:regime tag 由 recorder/app **重啟後** 嘅新 sweep 先開始寫(running 緊嘅 recorder 用舊 bundle,要 rebuild+restart)。Pre-E3 recordings 冇 tag → regime-filtered run 自動排除(unfiltered 不受影響)。E1 報告記低 cutover 日。
+- **實用理由**(S14 副產品):expectancy 覆核顯示 early detector 喺 4月牛 +0.87%/單 vs 05/06 ~0 → regime 對 lift 有實質影響,分層有用。E1 累積夠 tagged 數據後出三個 regime lift 表。
 
 ## 陷阱 / Do-NOT
 - Baseline MUST be filtered to the same regime slots as the signal events — mismatched baselines fabricate lift.

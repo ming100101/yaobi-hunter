@@ -1,135 +1,247 @@
-# 妖幣獵手 (Yaobi Hunter)
+# 妖幣獵手 · Yaobi Hunter
 
-UI for a 15-minute perp scanner, built from `yaobi-ui-spec.md`. Two views, futuristic dark-purple theme with neon-lavender (螢光淺紫) glow accents. **Pulls real OKX USDT-perp data**, with an automatic synthetic-demo fallback when the exchange is unreachable.
+Yaobi Hunter is a Windows-first cryptocurrency perpetual-futures scanner for spotting unusual price, open-interest, volume, funding, and spot-flow behaviour across the Binance USDT perpetual market.
 
-- **Screener list** — every scanned coin, sorted by strength. Symbol, regime tag (蓄力 / 拉升 / 出貨), strength 0-100, 1h change, OI 4h change, funding, 24h volume, risk-flag count. Auto-refreshes on the 15-min scan cadence. A LIVE · OKX / DEMO chip shows which source you're looking at.
-- **Full-market rolling scan (Binance universe)** — the scan covers every OKX USDT perp whose base coin also has a Binance USD-M perp listing (~350 coins; includes Binance's tokenized-stock perps). The Binance symbol list comes from the public `data.binance.vision` S3 bucket (via the `/bnv` proxy; the live fapi API is geo-blocked, the bucket is not), normalised for Binance's 1000×/1M× multiplier prefixes and cached 24h. Coins are scanned in **pipelined** batches of 20 — the next batch's candles download while the current batch's OI (the slow pool) is in flight, so wall time collapses to roughly the OI time alone — with the list updating and re-sorting per batch and a 掃描 N/355 progress chip; a full sweep measured end-to-end at **355/355 coins in 269s (~4.5 min)**, down from 387s pre-pipeline and ~8 min before rate-limit tuning (see Rate-limit tuning below). Scan rows keep only derived metrics (`CoinLite`) — full series for ~350 coins would cost hundreds of MB — and detail views fetch the full 48h series on demand (cached in IndexedDB + memory LRU, so re-opens are instant, ~100ms).
-- **Instant startup + priority refresh** — every successful live scan is persisted to IndexedDB (`src/data/cache.ts`), so the app renders the last scan immediately on launch and refreshes behind it; if OKX is unreachable the last good data is kept with a notice instead of dropping to demo. Recently-viewed coins (last 20, persisted) are fetched first in every scan, and opening a coin's detail view immediately re-fetches that one coin in the background (2-min cooldown) so what you're looking at is freshest.
-- **Search tab (搜尋)** — searches **every** OKX USDT perp (~390), not just the scanned 16. Empty query shows the top 30 by 24h USD volume; typing filters instantly against a 60s-cached ticker snapshot (prefix matches rank first). Coins already in the scan carry a 掃描中 pill and open instantly from scan data; anything else is fetched on demand (48h of 5m klines + OI + funding, ~3-5s) and analyzed with the same pipeline. The search query survives opening a detail view and coming back.
-- **Interpretation zone (型態解讀)** — a glowing panel at the top of every coin detail that reads the data and explains what the changes *mean*: funding cooling from 0.01% toward 0 (long-leverage froth washing out), funding flipping negative (squeeze fuel), the four OI×price quadrants, OI coiling under a flat price (pre-move accumulation), volume ignition vs climax, Bollinger squeeze, EMA crosses, breakout quality, wick rejections, and more — 27 detectors in `src/lib/interpret.ts`, each with concrete thresholds and live numbers baked into the zh-TW text. Top 6 by priority are shown, tone-tagged (bull/bear/warn/info). Educational heuristics, not investment advice.
-- **Coin detail** — stacked full-width synced panels. The **price panel is a tall (520px) TradingView-style single-pane chart**: candles + EMA20/EMA50 + Bollinger + dashed entry line, with volume rendered as a quiet semi-transparent histogram overlay at the bottom of the same pane (its own hidden price scale, not a separate panel) instead of a standalone volume chart. A floating **OHLC legend** (top-left, overlaid on the canvas) shows open/high/low/close/Δ% for whatever bar the crosshair is over, falling back to the latest bar when the cursor leaves — wired via `chart.subscribeCrosshairMove` + an imperative DOM update (bypasses React re-render on every mouse-move for performance). Below: open interest, funding around a zero baseline, and the composite strength line with its threshold. Then the four core-signal pills, risk flags, and the fixed exit plan (TP1/TP2/TP3, hard SL, 5% runner). A **K-line timeframe selector (5m / 15m / 1h / 4h)** on the price panel re-aggregates all panels together, so the crosshair stays aligned. Scan metrics (強度, 1h, OI 4h, funding) are fixed to the 15-min scan and don't change with the chart timeframe.
-- **Pinning (📌)** — pin any coin from the screener list, search results, or a detail view; pinned coins float to the top of the list (sorted by strength among themselves) and persist across restarts (IndexedDB). Pinned symbols are also added to scan priority, so they're fetched first every sweep.
-- **Signal-age tracking** — the app remembers, per coin, when it first entered the strength top-10 and when ⚡/蓄 first fired (continuous-presence: cleared when the state turns off), shown as `T10 {age}` / age-annotated badges on list rows and detail headers. Backed by `signal-times` in IndexedDB, updated once a full sweep completes.
+It includes a live desktop dashboard, Telegram alerts, a 24/7 background recorder, signal history, strategy evaluation, and detailed multi-timeframe charts.
 
-## Run
+> Educational market-analysis software only. It does not place trades and is not financial advice.
 
-```sh
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # production bundle in dist/
-```
+## Highlights
 
-## Live data
+- Scans the full tradeable Binance USDT perpetual universe in rolling batches.
+- Ranks coins by a composite strength score and market regime.
+- Detects validated signal classes such as:
+  - `⚡ 縮` — flush-context breakout / 縮倉突破
+  - `📈 增` — rebuilding open-interest breakout / 增倉突破
+  - `🚀 擴` — virgin open-interest expansion / 處女增倉
+- Sends successful signals to Telegram and optional Windows notifications.
+- Keeps a dedicated **推送** monitor showing every successfully delivered Telegram coin.
+- Shows pushed price, current price, return since push, 1-hour change, strength, and a green/red **24H sparkline**.
+- Opens any row into a detailed TradingView-style chart view.
+- Records completed scans as local JSONL files for later replay and evaluation.
+- Runs as a standalone Windows executable with an optional background recorder.
 
-- **Source: OKX v5 public market data** (no API key). The Vite dev server proxies `/okx/*` → `https://www.okx.com` (see `vite.config.ts`) so browser requests stay same-origin — for a production deploy, replicate that proxy on your host.
-- **Why not Binance?** Verified against Binance's own docs and live probes: every REST endpoint that carries USDT-perp data — `fapi.binance.com`, `dapi.binance.com`, and all six documented spot bases (`api.binance.com`, `api1`–`api4`, `api-gcp`) — returns HTTP 451 ("restricted location per Terms of Use 'b. Eligibility'") from this network. The only reachable Binance surfaces are `data-api.binance.vision` (market-data-only mirror, **spot only** — no perp klines, no open interest, no funding) and `data.binance.vision` bulk dumps (futures history exists there but T+1 daily zips, useless for a 15-min live scan). Since OI and funding are the scanner's core signals, spot-only Binance data can't drive this app. Bybit is likewise blocked (CloudFront 403). If you run the proxy from a region where Binance permits access, a `fapi` client can be added behind the same `ScanResult` shape.
-- **Per scan:** the top coins from a curated alt/meme pool are ranked by live 24h USD volume, then for each coin the app fetches 48h of 5m klines (2 paginated calls), 5m open-interest history (rubik endpoint, strictly rate-limited → fetched single-flight with spacing), and funding-rate settlement history resampled onto the 5m grid.
-- **Derived analytics** (`src/lib/analyze.ts`): the strength score, regime call, core signals, and risk flags are computed from the real series — OI momentum, trend, volume z-score, taker-side balance, range position, funding heat. The regime classifier scores 蓄力/拉升/出貨 on dynamics rather than a static position cascade, so a broad market rally doesn't read as everything "distributing". These are demo heuristics, not investment advice.
-- **Fallback:** any live-fetch failure (geo-block, offline, rate limit) drops to the seeded synthetic generator with a DEMO chip and a notice banner — the UI never white-screens.
+## Main tabs
 
-## Structure
+| Tab | Purpose |
+| --- | --- |
+| **掃描** | Live market screener, sorting, filters, signal badges, pins, and scan progress. |
+| **搜尋** | Search the full Binance perpetual universe and open any coin on demand. |
+| **推送** | Monitor coins successfully pushed through Telegram over the last 24 hours or 7 days. |
+| **策略** | Review recorded strategy performance and signal evidence. |
+| **記錄** | Replay historical scans, inspect signal events, and view the paper-trade journal. |
+| **設定** | Configure Telegram, Windows notifications, cooldowns, and local backup/import. |
 
-- `src/theme.css` — every color and style token lives here (single place to retheme)
-- `src/data/okx.ts` — OKX client: universe ranking, kline pagination, bulk + rubik OI, warm/cold split, funding resampling, throttled fetch pools, instrument search, on-demand single-coin fetch
-- `src/data/oiStore.ts` — warm bulk-OI history store (IndexedDB-backed in browser, in-memory in Node)
-- `src/lib/recording.ts` — shared compact scan-record format; `scripts/recordFile.ts` — Node JSONL sink
-- `scripts/recorder.ts` / `scripts/eval-recordings.ts` — headless data collector / event-library lift analysis
-- `src/components/SearchView.tsx` — the search tab (demo mode degrades to searching the local scan list)
-- `src/data/scan.ts` — live-first loader with demo fallback
-- `src/data/mockData.ts` — seeded synthetic data at a 5m base resolution, regime-shaped per coin per scan slot
-- `src/lib/analyze.ts` — strength score, regime classifier, signals, risk flags from real series
-- `src/lib/interpret.ts` — the pattern-interpretation library (27 detectors over funding/OI/price/volume)
-- `scripts/test-interpret.ts` — headless check of the interpret pipeline against live OKX data (bundle with esbuild, run with node)
-- `src/lib/aggregate.ts` — rolls the 5m base series up to the selected timeframe (OHLC / sum / last)
-- `src/components/ChartPanels.tsx` — the five lightweight-charts panels (create-once, update-via-setData — see Live detail view below)
-- `src/lib/chartSync.ts` — shared visible range + crosshair across stacked panels
+## Quick start for development
 
-## Live detail view
+Requirements:
 
-Opening a coin's detail no longer shows a frozen snapshot: while the view stays open, `src/App.tsx` refetches that coin's full series every 20s in the background (`DETAIL_LIVE_MS`, real data only — demo is static). The five chart panels (`src/components/ChartPanels.tsx`) are built as **create-once, update-via-setData**: each panel creates its chart/series exactly once when the coin is opened, and every refresh (live poll or timeframe switch) only calls `setData`/`applyOptions` on the existing objects — the chart itself is never torn down, so your pan/zoom and the cross-panel crosshair sync survive a background refresh. The visible range only resets when the *timeframe* actually changes (tracked per-panel via `useTfChanged`), not on a same-timeframe data refresh. Verified by tagging the canvas elements before a refresh cycle and confirming the same DOM nodes (not new ones) after multiple poll cycles.
-
-## ⚡ 縮倉突破 (flush-context breakout)
-
-The one signal in the app validated by backtest rather than intuition: OI flushed ≥8% below its 48h max + 24h close range ≤6% + neutral funding + OI turning up + a base-high break on 1H volZ ≥1.5. Backtest (154 Binance-listed small caps, 37d @1H): +15%/24h hit rate 9.1% vs 4.5% base rate (**lift ×2.04**), mean ret@24h +1.9% vs -0.2%. The quiet setup *without* the breakout trigger tested below base rate (×0.77) — the trigger carries the information. Surfaced three ways, all from one detector (`detectFlushBreakout` in `src/lib/analyze.ts`): a ⚡ badge on screener rows, a topbar toggle filtering the list to live triggers, and a top-priority 縮倉突破 insight in the detail view (with the backtest stats quoted). Expect it to be rare: ~1-2 firings per day across the whole universe.
-
-## 蓄 早期蓄力 (early-accumulation watchlist)
-
-The answer to "can we detect accumulation *before* the breakout": partially, and the app is honest about how partially. The quiet flush+basing setup alone backtests **below** base rate at every target/horizon tried (×0.60-0.88 — quiet coins are quiet). Adding two confirmations turns it consistently positive: **retail long/short account ratio falling ≥5% over 24h** (retail giving up) + **≥2% relative strength vs BTC** (someone supporting the price). Across four target/horizon specs: lift ×1.03-1.24, forward returns +1.1~1.3% vs -0.6~-1.4% baseline in every spec, MAE ~30% shallower. A best-spec ×1.61 did **not** survive the robustness sweep and is treated as selection noise. Accordingly this ships as **watchlist tier**: a quiet 蓄 badge on the row and an info-tone insight in the detail view — no notification, explicitly labeled 非進場訊號. Implementation is cost-aware: the cheap setup + RS checks run on data the scan already has; only survivors trigger the extra long/short-ratio fetch (BTC's 24h return is one request per sweep). Ablation also killed a plausible idea: taker buy-share during the base tested at ×0.67 — worse than nothing — and was not shipped.
-
-## Backtest harness
-
-`npm run backtest -- [flags]` tests the 縮倉築底 hypothesis (OI flushed + price basing + neutral funding → early pump detection) against ~30 days of real OKX 1H data across the Binance-listed small-cap universe. Data is fetched once and cached under `backtest-data/` (12h TTL, `--refresh` to refetch), so parameter sweeps re-run instantly — designed to be driven by hand or by a Claude Code agent.
-
-- `--mode setup` (default) fires on flush+basing+funding+OI-inflection alone — tests *early* detection. `--mode breakout` additionally requires a base-high break on volume (`--volz`).
-- Signal knobs: `--flush-pct 8 --flush-hours 48 --base-range 6 --base-hours 24 --neutral-funding 0.01 --inflect-hours 6`
-- Ablation filters (v2 data adds taker flow, long/short ratio, and a BTC benchmark): `--taker-share 0.53` (taker buy share over the base window), `--ls-drop 5` (long/short ratio drop % over the base window), `--rs-min 2` (relative return vs BTC ≥ %)
-- Outcome knobs: `--target 15` (% MFE) `--horizon 24` (hours) `--cooldown 24`
-- Universe knobs: `--min-vol 2e6 --max-vol 150e6 --max-coins N`
-- `--json` for machine-readable output (agents), human table otherwise.
-
-Every run reports the signal's hit rate against the **unconditional base rate** over all bars (the lift), mean/median MFE, MAE, and fixed-horizon returns, plus printed caveats (single regime window, per-coin clustering, intra-bar MFE optimism).
-
-## Bulk-OI warm store (scan ~4.5min → ~1.5min)
-
-The scan's bottleneck was the per-coin rubik OI-history endpoint (documented 5 req/2s, so 358 coins single-flight = most of the ~269s sweep). `src/data/oiStore.ts` replaces it with **one** bulk request per sweep (`GET /public/open-interest?instType=SWAP` → every coin's current `oiUsd`) accumulated into a local history:
-
-- Each sweep appends one snapshot and prunes past ~49h. Once a coin has ≥48h of stored points, the scan reads its OI trend straight from the store (`resample`d onto the candle grid, exactly like the rubik path) — **zero** rubik requests for that coin.
-- **Never spliced with rubik history.** Probing showed rubik's per-coin unit is inconsistent (DOGE reads in USD ~93M, PEPE in some other unit ~93,000M vs its real 22M USDT-swap OI); the app only ever survived because it uses OI as *ratios*. Bulk `oiUsd` is a clean, self-consistent USD unit, so the warm path uses bulk-only and the cold path uses rubik-only — a coin is always one or the other, so a unit mismatch can never create a false cliff.
-- **Warm/cold split** (`runRollingScan`): warm coins resolve synchronously (no pool, no pacing); only cold coins hit the paced rubik pool. A fully-warm sweep pays ~0 for OI. Measured: a synthetically-warmed full sweep ran **358 coins in 87s** (vs 269s cold), OI 358 warm / 0 cold.
-- Persisted to IndexedDB in the browser (survives restarts); Node headless is in-memory (re-warms over ~48h of running). Honest limits: the first ~48h of any fresh install is still cold; warm OI resolution is 15-min (vs rubik 5m), which is fine for the ratio/flush/strength uses (funding is already 8h-coarse); a missed bulk fetch is stale-guarded (`getSeries` returns null → falls back to rubik) rather than serving a gappy trend.
-
-## Event recorder + lift eval (`npm run recorder`, `npm run eval-rec`)
-
-To make signal evaluation not confined to one backtest window's market regime, each **completed** sweep is logged as one compact JSONL line to `%LOCALAPPDATA%/YaobiHunter/recordings/YYYY-MM-DD.jsonl`, plus a one-line `{type:'sweep-meta',…}` completeness marker. The per-coin row (schema **v2**, `src/lib/recording.ts`) is `[sym, price, oiUsd, funding, volZ, strength, regime, fb, ea, vol24h, change24h, ret4h, pos, buyShare4h, f8h, bbPctile, lsDrop, rs, oiDrop, spotVol24h, basis]` — the first 10 fields are the original v1 row (older files read fine; indexes 10-20 come back null via `recCoinField`), and the appended feature vector is what lets a replay re-evaluate detectors instead of just re-reading derived metrics. Two writers, one shared format and dir:
-
-- **Browser/exe**: `src/App.tsx` fire-and-forgets `POST /record` on sweep completion; the exe (`scripts/server.cjs`) and the Vite dev server (`vite.config.ts` middleware) both append it. Zero-cost data collection whenever the app is open.
-- **Headless**: `npm run recorder` — a long-runner that sweeps once per 15-min slot and appends directly. The realistic path for accumulating months without the UI (`--once` for a single sweep).
-
-**24/7 collection** runs via the auto-start setup below (the recorder is one of the two logon launchers). The passive writers only run while the app is open, so continuous data needs the headless recorder running in the background — `scripts/yaobi-ctl.ps1 install` sets that up.
-
-`npm run eval-rec` then measures each signal state (⚡, 蓄, strength≥70, top10) **as it actually fired live**: forward MFE / fixed-horizon return from the recorded 15-min price path vs the unconditional baseline → a lift table. Signals are sampled on their **rising edge** (off→on) so a persistent state counts as one event, not N correlated samples. `--dir PATH`, `--target %`, `--json`. Small samples until months accumulate — it verifies the mechanism; the statistics come with time.
-
-## Standalone .exe (desktop app mode)
-
-`npm run build && node scripts/make-exe.mjs [outPath]` packages the app as a single Windows executable (Node SEA): `scripts/server.cjs` serves the embedded `dist/` and proxies `/okx/*` + `/bnv/*` upstream, so the exe needs no Node install, no npm, no separate proxy.
-
-Double-click → the console respawns itself hidden, then launches **Edge/Chrome in `--app` mode** with a dedicated profile: a standalone window with its own taskbar entry, no tabs, no URL bar. Closing the window shuts the hidden server down (a poll waits until no browser process holds the app profile — Edge's launcher exits early, so a naive child-exit check would orphan the window). Fallbacks: no Edge/Chrome found → default browser + visible console; `--console` forces the old behaviour; `--no-open` serves headless. Port 4780, auto-increments if busy. ~90 MB (embedded Node runtime); unsigned, so SmartScreen may warn on first run.
-
-**Signal notifications**: while the app is open, each scan batch diffs for newly-fired ⚡ 縮倉突破 signals and shows a Windows toast (per-coin 6h cooldown, persisted; click opens that coin's detail). Grant the notification permission when the app window asks once. Toasts only fire while the app is running — there is no background service. For 閂-app coverage, set up the headless recorder + Telegram notifications in the **設定** tab and the auto-start below.
-
-## Auto-start + kill switch (`scripts/yaobi-ctl.ps1`)
-
-A single control script manages logon auto-start and a master off-switch, all without admin (it uses per-user Startup-folder launchers, not scheduled tasks).
+- Windows 10 or 11
+- Node.js 20 or newer
+- npm
 
 ```powershell
-scripts\yaobi-ctl.ps1 install     # app + 24/7 recorder open at every logon
-scripts\yaobi-ctl.ps1 shortcuts   # desktop "Yaobi KILL" / "Yaobi RESUME" shortcuts
-scripts\yaobi-ctl.ps1 status      # KILL state · auto-start state · running processes
-scripts\yaobi-ctl.ps1 kill        # stop ALL background jobs; stays off across reboots
-scripts\yaobi-ctl.ps1 resume      # clear the switch, relaunch app + recorder
-scripts\yaobi-ctl.ps1 uninstall   # remove the Startup launchers
+npm install
+npm run dev
 ```
 
-- **Auto-start**: `install` writes `YaobiApp.vbs` (launches `YaobiHunter.exe --auto`, console hidden) and `YaobiRecorder.vbs` (launches the headless recorder hidden) into the Startup folder. The exe still opens its own Edge `--app` window; only the launcher console is hidden.
-- **Kill switch** = the file `%LOCALAPPDATA%\YaobiHunter\KILL`. While it exists, `kill` has stopped every running app/recorder AND any future auto-start self-aborts (`server.cjs` skips the `--auto` launch, `recorder.ts` exits its loop, and the T1/T2 trading loops halt) — so a reboot won't bring anything back until `resume`. Double-click **Yaobi KILL** on the desktop for a one-click panic button; **Yaobi RESUME** turns it back on.
-- **After a code change**, rebuild so auto-start opens the current app: `npm run build && node scripts/make-exe.mjs` (exe) and re-run `scripts\yaobi-ctl.ps1 install` (recorder bundle). The exe must be closed first — run `kill` to release its file lock.
+Open [http://localhost:5173](http://localhost:5173).
 
-## Rate-limit tuning (documented limits × measured behaviour)
+Useful checks:
 
-The throttle settings in `runRollingScan` (`src/data/okx.ts`) are calibrated against **both** OKX's documented per-endpoint limits and empirical probes. (The docs-v5 site is a 5 MB single-page app that defeats naive fetching — the per-endpoint numbers are there, but you have to grep the raw HTML near each endpoint's path.)
+```powershell
+npm run typecheck
+npm run build
+npm run preview
+```
 
-| endpoint | documented limit | our attempted rate |
-|---|---|---|
-| `rubik/.../open-interest-volume` | 5 req / 2s, per IP | ~1.74/s (70% of cap) |
-| `market/candles` | 40 req / 2s, per IP | ~10-14/s peak |
-| `public/funding-rate-history` | 10 req / 2s, per **IP + instrument** | 1 req per instrument — can't collide |
+The browser app uses public Binance market endpoints through the local Vite proxy. No Binance API key is required.
 
-Key findings that shaped the final config:
+## Build the Windows desktop app
 
-- **OI is the long pole**, so the sweep is pipelined: the next batch's candles download while the current batch's OI pool runs, collapsing wall time to roughly the OI time alone.
-- OI runs at concurrency 2 with 500ms per-worker pacing = ~70% of the documented cap, leaving headroom for the app's own detail-view live poll (1 OI request / 20s) on the same IP.
-- 429s at these settings only appear when a **second instance** shares the IP (e.g. dev preview + exe scanning simultaneously); a slower 650ms pacing was tested under that double load and was strictly worse (309s vs 269s, same 429 count), so 500ms is kept. `okxGet` retries with backoff absorb multi-instance residue invisibly, and it logs a console warning on every 429/5xx so a throttle regression shows up immediately.
+Build the production UI and package it as a single executable:
 
-Measured end-to-end (full 355-coin sweep, app running concurrently): **269s**, zero coins dropped. History: ~8 min (original guess-based throttle) → 387s (probe-based single-flight) → 269s (docs + pipeline + paced concurrency).
+```powershell
+npm install
+npm run typecheck
+npm run build
+node scripts\make-exe.mjs
+```
 
-強度與階段為示範性評分。Not financial advice.
+Output:
+
+```text
+sea\YaobiHunter.exe
+```
+
+Run `YaobiHunter.exe` to start the local server and open the desktop dashboard. The app normally serves itself from `http://127.0.0.1:4780`; if that port is occupied, it tries the next available port up to `4790`.
+
+## Configure Telegram alerts
+
+1. In Telegram, open `@BotFather`.
+2. Send `/newbot` and follow the prompts.
+3. Copy the Bot Token.
+4. Open Yaobi Hunter → **設定**.
+5. Paste the token into **Telegram Bot Token**.
+6. Send any message to your new bot from Telegram.
+7. Click **偵測** beside Chat ID.
+8. Click **測試通知** and confirm the test message arrives.
+
+You may also enable Windows desktop notifications and set a per-coin cooldown in hours.
+
+Only alerts that Telegram confirms as successfully delivered are added to the **推送** monitor. Failed delivery attempts are not shown as pushes.
+
+## Run continuously in the background
+
+The control script installs two per-user Startup launchers without administrator access:
+
+- Yaobi Hunter desktop app
+- 24/7 headless market recorder and notifier
+
+From PowerShell in the project directory:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\yaobi-ctl.ps1 install
+powershell -ExecutionPolicy Bypass -File scripts\yaobi-ctl.ps1 resume
+```
+
+Optional desktop KILL and RESUME shortcuts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\yaobi-ctl.ps1 shortcuts
+```
+
+Control commands:
+
+```powershell
+# Show app, recorder, auto-start, and kill-switch state
+powershell -ExecutionPolicy Bypass -File scripts\yaobi-ctl.ps1 status
+
+# Stop all Yaobi processes and keep them off after reboot
+powershell -ExecutionPolicy Bypass -File scripts\yaobi-ctl.ps1 kill
+
+# Clear the kill switch and start the app plus recorder
+powershell -ExecutionPolicy Bypass -File scripts\yaobi-ctl.ps1 resume
+
+# Remove Startup launchers
+powershell -ExecutionPolicy Bypass -File scripts\yaobi-ctl.ps1 uninstall
+```
+
+The master kill switch is `%LOCALAPPDATA%\YaobiHunter\KILL`. While it exists, background jobs remain disabled, including after Windows restarts.
+
+## Local data
+
+Yaobi Hunter keeps its runtime data on the local machine:
+
+| Data | Location |
+| --- | --- |
+| Settings, pins, notification config, cooldowns, and warm OI state | `%LOCALAPPDATA%\YaobiHunter\kv.json` |
+| Daily scan and notification records | `%LOCALAPPDATA%\YaobiHunter\recordings\YYYY-MM-DD.jsonl` |
+| Master stop marker | `%LOCALAPPDATA%\YaobiHunter\KILL` |
+
+The Telegram Bot Token is sensitive. Do not commit `kv.json`, paste the token into issues, or share it in screenshots. Use **設定 → 匯出備份** when moving user settings to another installation.
+
+## Data sources and behaviour
+
+- Futures market data: Binance public Futures endpoints.
+- Spot confirmation data: Binance public Spot endpoints.
+- Liquidation collection: OKX public liquidation-order data, used by the headless recorder because Binance no longer provides the equivalent public REST feed.
+- Scan cadence: aligned to rolling 15-minute sweeps.
+- Coin detail refresh: live background refresh while the detail view remains open.
+- Offline handling: the last good cached scan is retained; a seeded demo dataset is available when live data cannot be reached.
+
+The app normalises Binance multiplier symbols such as `1000PEPE` so prices and labels remain understandable at the individual-coin level.
+
+## Project structure
+
+```text
+src/
+  components/       React screens, tables, charts, settings, and push monitor
+  data/             Binance/OKX clients, scanning, cache, and mock data
+  lib/              Analysis, signals, recording, notification, and evaluation logic
+  App.tsx            Main application state and routing
+  theme.css          Shared theme and component styling
+
+scripts/
+  recorder.ts        24/7 headless scanner and notifier
+  notifyHeadless.ts  Telegram/Windows delivery and successful-push logging
+  server.cjs         Local server embedded in the Windows executable
+  make-exe.mjs       Windows single-executable packager
+  yaobi-ctl.ps1      Auto-start, status, kill, resume, and uninstall controls
+  backtest*.ts       Historical research harnesses
+
+docs/                Roadmap and research notes
+sea/                 Generated desktop executable and SEA build files
+dist/                Generated production web bundle
+```
+
+Important UI files:
+
+- `src/components/ScreenerList.tsx` — main scanner table and 24H sparklines
+- `src/components/PushWatchView.tsx` — Telegram push-price monitor
+- `src/components/CoinDetail.tsx` — detailed coin view
+- `src/components/ChartPanels.tsx` — synced price, OI, funding, and strength charts
+- `src/components/SettingsView.tsx` — notification configuration and backups
+
+## npm scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the Vite development server. |
+| `npm run typecheck` | Run TypeScript checks without emitting files. |
+| `npm run build` | Build the production web bundle. |
+| `npm run preview` | Preview the production bundle. |
+| `npm run recorder` | Start the headless 15-minute recorder. |
+| `npm run eval-rec` | Evaluate recorded signals and forward returns. |
+| `npm run backtest` | Run the hourly historical signal harness. |
+| `npm run backtest5m` | Run the 5-minute Binance Vision harness. |
+| `npm run test-paper` | Test paper-trading state logic. |
+| `npm run test-strategy` | Test strategy-report calculations. |
+| `npm run test-signal-log` | Test signal-log behaviour. |
+| `npm run test-regime` | Test market-regime handling. |
+
+Most research commands accept extra flags after `--`, for example:
+
+```powershell
+npm run backtest -- --mode breakout --target 15 --horizon 24
+npm run eval-rec -- --json
+```
+
+## Development notes
+
+- The working market series uses 5-minute base candles and aggregates them for 15m, 1h, and 4h views.
+- Full scan rows use a compact `CoinLite` representation; complete series are loaded on demand for detail views.
+- Recording formats are append-only and backward-readable so older local evidence remains usable.
+- Signal promotion is evidence-gated. Experimental detectors may be recorded for evaluation without appearing as live badges or alerts.
+- Generated folders such as `dist/`, `sea/`, and `scripts/.build/` should be rebuilt after relevant source changes.
+
+## Troubleshooting
+
+### The app stays on loading
+
+- Confirm internet access to Binance public endpoints.
+- Check whether a firewall or regional restriction is blocking the requests.
+- Wait for the rolling scan to finish its first batches.
+- Run the desktop health check by opening `http://127.0.0.1:4780/__yaobi_ping__`.
+
+### Telegram test fails
+
+- Confirm the Bot Token was copied without spaces.
+- Send a message to the bot before using **偵測**.
+- Check that the detected Chat ID is correct.
+- Ensure the background recorder is running with `yaobi-ctl.ps1 status`.
+
+### Background jobs return after reboot
+
+Use `yaobi-ctl.ps1 kill`. Closing only the app window does not disable the installed Startup recorder.
+
+### The push monitor is empty
+
+- It only shows Telegram deliveries confirmed as successful.
+- Choose **7日** to widen the time range.
+- Ensure the recorder is running and Telegram is configured.
+- Current-price and sparkline fields appear after that symbol is included in the live scan cache.
+
+## Disclaimer
+
+Cryptocurrency derivatives are high risk. Signal labels, strength scores, backtests, paper trades, and interpretation text are analytical aids only. Historical lift does not guarantee future performance. Verify data independently and make your own risk decisions.

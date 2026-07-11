@@ -33,6 +33,12 @@ import TimeframeSelector from './TimeframeSelector';
 
 const FONT = "'Inter','Segoe UI','Noto Sans TC','Microsoft JhengHei',sans-serif";
 const VISIBLE_BARS = 110;
+// default K-line window: the past 14 days on 1h/4h (long series, ~25d). 5m/15m
+// keep the readable 110-bar default — their data now also reaches ~14d (the
+// deep series), but thousands of visible 5m bars would be mush; pan/zoom back
+// for the depth instead.
+const WINDOW_DAYS = 14;
+const BARS_PER_DAY: Record<Timeframe, number> = { '5m': 288, '15m': 96, '1h': 24, '4h': 6 };
 
 function baseOptions(showTime: boolean): DeepPartial<ChartOptions> {
   return {
@@ -160,21 +166,27 @@ function insightMarkers(candles: Candle[], insights: Insight[]): SeriesMarker<UT
   return markers;
 }
 
-function initialRange(chart: IChartApi, bars: number) {
-  // clamp so a coarse timeframe with few bars isn't crushed against the edge
-  chart.timeScale().setVisibleLogicalRange({ from: Math.max(-1, bars - VISIBLE_BARS), to: bars + 3 });
+function initialRange(chart: IChartApi, bars: number, tf: Timeframe) {
+  // 1h/4h: default to the past 14 days (or everything, for young listings).
+  // 5m/15m: default to the 110-bar readable window; the ~14d deep history
+  // stays pannable to the left.
+  const want = tf === '1h' || tf === '4h' ? BARS_PER_DAY[tf] * WINDOW_DAYS : VISIBLE_BARS;
+  const visible = Math.min(bars, want);
+  chart.timeScale().setVisibleLogicalRange({ from: Math.max(-1, bars - visible), to: bars + 3 });
 }
 
-// Tracks whether the timeframe changed since the last data update, so the
-// visible range is reset on a genuine timeframe switch (bar count changes
-// completely) but left untouched on a background live-data refresh (same
-// timeframe, just newer numbers) — that's what keeps the user's pan/zoom
-// stable across the periodic re-fetch of an open coin.
-function useTfChanged(tf: Timeframe): () => boolean {
-  const last = useRef<Timeframe | null>(null);
-  return () => {
-    const changed = last.current !== tf;
-    last.current = tf;
+// Tracks whether the visible range needs resetting on this data update: a
+// genuine timeframe switch, OR the bar count jumping massively at the same
+// timeframe — which happens when a scan-cached coin's 48h fallback is
+// replaced by the freshly-fetched 25d long series (without the reset the old
+// logical range would leave the user staring at the OLDEST slice of the new
+// series). A background live-data refresh (same timeframe, ±a bar) leaves the
+// user's pan/zoom untouched, exactly as before.
+function useRangeReset(tf: Timeframe): (bars: number) => boolean {
+  const last = useRef<{ tf: Timeframe | null; bars: number }>({ tf: null, bars: 0 });
+  return (bars: number) => {
+    const changed = last.current.tf !== tf || bars > last.current.bars * 2 || bars * 2 < last.current.bars;
+    last.current = { tf, bars };
     return changed;
   };
 }
@@ -275,7 +287,7 @@ export function PricePanel({
   const ref = useRef<HTMLDivElement>(null);
   const legendRef = useRef<HTMLDivElement>(null);
   const state = useRef<PriceState | null>(null);
-  const tfChanged = useTfChanged(tf);
+  const needsRangeReset = useRangeReset(tf);
 
   // create the chart/series ONCE per mount (per open coin) — data is (re)set
   // by the effect below, which also runs on live-data refreshes without
@@ -283,7 +295,10 @@ export function PricePanel({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const chart = createChart(el, baseOptions(false));
+    // price panel shows its OWN time axis (in addition to the bottom panel's):
+    // it's the tallest panel and the one people actually read — without this
+    // you had to scroll to the strength panel just to see what time a bar is
+    const chart = createChart(el, baseOptions(true));
 
     // volume rendered as a quiet overlay at the bottom of the price pane
     // (TradingView's default layout) instead of a separate panel below
@@ -397,8 +412,8 @@ export function PricePanel({
     const last = coin.candles[coin.candles.length - 1];
     st.lastBar = { open: last.open, high: last.high, low: last.low, close: last.close };
     renderOhlcLegend(st.legendEl, st.lastBar);
-    if (tfChanged()) initialRange(st.chart, coin.candles.length);
-  }, [coin, fills, insights, tfChanged]);
+    if (needsRangeReset(coin.candles.length)) initialRange(st.chart, coin.candles.length, tf);
+  }, [coin, fills, insights, tf, needsRangeReset]);
 
   const last = coin.candles[coin.candles.length - 1].close;
   const dirCls = pctSign(coin.change1h) >= 0 ? 'up-badge' : 'down-badge';
@@ -450,7 +465,7 @@ interface OIState {
 export function OIPanel({ coin, sync, tf }: PanelProps) {
   const ref = useRef<HTMLDivElement>(null);
   const state = useRef<OIState | null>(null);
-  const tfChanged = useTfChanged(tf);
+  const needsRangeReset = useRangeReset(tf);
 
   useEffect(() => {
     const el = ref.current;
@@ -477,16 +492,22 @@ export function OIPanel({ coin, sync, tf }: PanelProps) {
     const st = state.current;
     if (!st) return;
     st.oi.setData(toLine(coin.oi));
-    if (tfChanged()) initialRange(st.chart, coin.oi.length);
-  }, [coin, tfChanged]);
+    if (needsRangeReset(coin.oi.length)) initialRange(st.chart, coin.oi.length, tf);
+  }, [coin, tf, needsRangeReset]);
 
-  const dirCls = pctSign(coin.oi4h, 1) >= 0 ? 'up-badge' : 'down-badge';
+  const oiStale = coin.oiTrusted === false; // P1: value is from the laggy cold-path series
+  const dirCls = oiStale ? '' : pctSign(coin.oi4h, 1) >= 0 ? 'up-badge' : 'down-badge';
   return (
     <PanelCard
       title="未平倉量 OI"
       height={120}
       chartRef={ref}
-      badge={<span className={`panel-badge ${dirCls}`}>OI 4h {fmtPct(coin.oi4h, 1)}</span>}
+      badge={
+        <span className={`panel-badge ${dirCls}`} title={oiStale ? 'OI 資料滯後（冷路徑），僅供參考；OI 訊號已停用' : undefined}>
+          OI 4h {fmtPct(coin.oi4h, 1)}
+          {oiStale ? '·滯後' : ''}
+        </span>
+      }
     />
   );
 }
@@ -502,7 +523,7 @@ interface FundingState {
 export function FundingPanel({ coin, sync, tf }: PanelProps) {
   const ref = useRef<HTMLDivElement>(null);
   const state = useRef<FundingState | null>(null);
-  const tfChanged = useTfChanged(tf);
+  const needsRangeReset = useRangeReset(tf);
 
   useEffect(() => {
     const el = ref.current;
@@ -542,8 +563,8 @@ export function FundingPanel({ coin, sync, tf }: PanelProps) {
     const st = state.current;
     if (!st) return;
     st.funding.setData(toLine(coin.fundingHist));
-    if (tfChanged()) initialRange(st.chart, coin.fundingHist.length);
-  }, [coin, tfChanged]);
+    if (needsRangeReset(coin.fundingHist.length)) initialRange(st.chart, coin.fundingHist.length, tf);
+  }, [coin, tf, needsRangeReset]);
 
   const hot = coin.funding > 0.03;
   const cls = hot ? 'warn-badge' : coin.funding < 0 ? 'up-badge' : '';
@@ -569,7 +590,7 @@ interface StrengthState {
 export function StrengthPanel({ coin, sync, tf }: PanelProps) {
   const ref = useRef<HTMLDivElement>(null);
   const state = useRef<StrengthState | null>(null);
-  const tfChanged = useTfChanged(tf);
+  const needsRangeReset = useRangeReset(tf);
 
   useEffect(() => {
     const el = ref.current;
@@ -616,8 +637,8 @@ export function StrengthPanel({ coin, sync, tf }: PanelProps) {
         size: 1,
       },
     ]);
-    if (tfChanged()) initialRange(st.chart, coin.strengthHist.length);
-  }, [coin, tfChanged]);
+    if (needsRangeReset(coin.strengthHist.length)) initialRange(st.chart, coin.strengthHist.length, tf);
+  }, [coin, tf, needsRangeReset]);
 
   return (
     <PanelCard

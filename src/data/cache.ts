@@ -68,6 +68,7 @@ const SERVER_KEYS = new Set([
   'notify', // 設定 tab writes here; the headless recorder reads it from kv.json
   'paper-state', // M1 paper book — shared with the recorder so app+recorder accrue one ledger
   'signal-log', // 24h Signal Read history per coin — survives reload / exe port drift
+  'theme', // F1 🎀 theme choice — cosmetic, but losing it on port drift feels like a bug
 ]);
 
 // The /kv path only makes sense in the browser (a relative fetch resolves
@@ -171,7 +172,7 @@ export function loadCachedScan(): Promise<ScanResult | null> {
 
 export function saveCachedScan(scan: ScanResult): Promise<void> {
   // only real data is worth persisting — demo regenerates instantly anyway
-  if (scan.source !== 'okx') return Promise.resolve();
+  if (scan.source === 'demo') return Promise.resolve();
   return kvSet('scan', scan);
 }
 

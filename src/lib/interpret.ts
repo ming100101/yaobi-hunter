@@ -1,4 +1,4 @@
-import type { Coin } from '../types';
+import type { Coin, VolumeBar } from '../types';
 import { aggregateCandles, aggregateLast, aggregateVolume } from './aggregate';
 import { detectFlushBreakout } from './analyze';
 import { ema } from './indicators';
@@ -63,6 +63,16 @@ interface Ctx {
   spotVolRatio: number | null; // spot vol last-8h mean / prior-40h mean
   basisPct: number | null; // perp/spot basis % (from Coin.basisPct)
   spotBuyShare: number | null; // spot taker buy share over 24h (from Coin.spotTakerBuyShare24h)
+  // ---- S6 squeeze, evaluated on the 1H aggregation to mirror the backtest
+  // (scripts/backtest.ts --mode squeeze, def D3, confirm either) exactly ----
+  sqzSetup: boolean; // TTM squeeze (BB20,2 inside Keltner 20,1.5·ATR) + direction confirm, latest bar
+  sqzBreakout: { volZ1h: number; sinceH: number } | null; // setup within 6h resolved up through the range high on volume
+  // ---- S7 boarding B2 (EMA 收復), 1H mirror of backtest --mode boarding ----
+  boardingB2: { volZ1h: number; hoursBelow: number } | null;
+  // ---- S9 rebuild R1 (增倉突破), 1H mirror of backtest --mode rebuild ----
+  rebuildR1: { volZ1h: number; oi4h: number } | null;
+  // ---- S13 virgin V2 (處女增倉突破), 1H mirror of backtest --mode virgin ----
+  virginV2: { volZ1h: number; oi4h: number; oi24h: number } | null;
 }
 
 // funding formatted at 3 decimals, percents at sensible precision
@@ -73,10 +83,14 @@ const r1 = (x: number) => fmtPct(x * 100, 1); // fraction -> %
 function buildCtx(coin: Coin): Ctx | null {
   const c15 = aggregateCandles(coin.candles, 3);
   const v15 = aggregateVolume(coin.volume, c15, 3);
-  const oi15 = aggregateLast(coin.oi, 3);
   const f15 = aggregateLast(coin.fundingHist, 3);
   const M = c15.length;
   if (M < 60) return null;
+  // Under 429 throttling the funding fetch can fail and come back shorter than
+  // the candles (binance.ts scan path falls back to an empty series). Every f15
+  // index below derives from c15.length, so a short series would throw — skip
+  // this coin's reads for the sweep instead.
+  if (f15.length < M) return null;
   const at = (k: number) => Math.max(0, M - k);
 
   const last = c15[M - 1].close;
@@ -88,8 +102,13 @@ function buildCtx(coin: Coin): Ctx | null {
   const f8h = f15[at(33)].value;
   const f24h = f15[at(97)].value;
 
-  const oiRef = oi15[at(17)].value;
-  const oi4h = oiRef > 0 ? (oi15[M - 1].value / oiRef - 1) * 100 : 0;
+  // P1: use the store-corrected oi4h computed by analyze (coin.oi4h) instead of
+  // recomputing from the possibly-hours-stale cold-path `oi` series. When the
+  // data layer marks OI untrusted (oiTrusted === false), poison with NaN: every
+  // numeric comparison against NaN is false, so ALL OI-gated reads fail closed
+  // without touching each detector. Because of this sentinel, NEVER gate on a
+  // negated oi4h comparison (e.g. `!(c.oi4h > x)`) — it would pass on NaN.
+  const oi4h = coin.oiTrusted === false ? NaN : coin.oi4h;
 
   const vols = v15.map((v) => v.value);
   const prior = vols.slice(at(97), M - 1);
@@ -202,7 +221,7 @@ function buildCtx(coin: Coin): Ctx | null {
     win.reduce((a, c) => a + (c.high - c.low), 0) / Math.max(1, win.length);
 
   // S2 spot cross-source metrics — computed only when a candidate spot series is
-  // attached (spotCandles/spotVolume from okx.ts). null on demo/older coins and
+  // attached (spotCandles/spotVolume from binance.ts). null on demo/older coins and
   // pure-perp listings, so the spot detectors no-op there. Aggregated to 15m to
   // match the perp volZ math above (same window: prior 24h / last-8h vs 40h).
   let spotVolZ: number | null = null;
@@ -267,7 +286,396 @@ function buildCtx(coin: Coin): Ctx | null {
     spotVolRatio,
     basisPct,
     spotBuyShare,
+    ...computeSqueeze(coin),
+    boardingB2: computeBoardingB2(coin),
+    rebuildR1: computeRebuildR1(coin),
+    virginV2: computeVirginV2(coin),
   };
+}
+
+// ---- S9 rebuild R1 (增倉突破) on the 1H aggregation, mirroring backtest
+// --mode rebuild --rb-def R1 bar-for-bar. Gate 2026-07-06 (150 幣, ~37d @1H,
+// +10%/24h): ×2.60 (n=86, hit 26.7% vs base 10.3%), ALL robustness cells
+// ≥×1.83 (flush±25% ×2.78/×2.22 · oi4h±25% ×2.27/×2.67 · volZ±25% ×2.47/×2.60
+// · t15/h24 ×3.64 · t10/h48 ×1.83), overlap ⚡ 9% / sqD3 35%, medTTH 8h.
+// 申報: meanRet@24h 僅 +0.3%; flush10 cell meanRet −1.5% (lift 仍 ×2.22).
+// Live≠eval caveats (same class as ⚡/S6): scan tier has ~48 1H bars (flush
+// window uses what's available; harness warmup 54) and the cold-path oi series
+// tail can lag hours (P1) — so the flush SHAPE reads from the series but the
+// freshness-critical oi4h leg uses the store-corrected coin.oi4h with the NaN
+// fail-closed rule (untrusted ⇒ never fires).
+const RB_FLUSH = 8; // % OI drop (high→low) within the past 48 bars
+const RB_OI4H = 3; // % oi4h floor at the breakout bar (rebuilding/expanding)
+const RB_VOLZ = 1.5;
+
+function vol60Z(v60: VolumeBar[], i: number): number {
+  const win = v60.slice(Math.max(0, i - 24), i).map((b) => b.value);
+  if (win.length < 8) return 0;
+  const m = win.reduce((a, b) => a + b, 0) / win.length;
+  const sd = Math.sqrt(win.reduce((a, b) => a + (b - m) ** 2, 0) / win.length);
+  return sd > 0 ? (v60[i].value - m) / sd : 0;
+}
+
+function computeRebuildR1(coin: Coin): Ctx['rebuildR1'] {
+  const c60 = aggregateCandles(coin.candles, 12);
+  const v60 = aggregateVolume(coin.volume, c60, 12);
+  const o60 = aggregateLast(coin.oi, 12);
+  const H = Math.min(c60.length, v60.length, o60.length);
+  if (H < 26) return null;
+  const i = H - 1;
+  // common trigger: close breaks the prior 24h high on expanded volume
+  let hi24 = -Infinity;
+  for (let j = Math.max(0, i - 24); j < i; j++) hi24 = Math.max(hi24, c60[j].high);
+  if (!(c60[i].close > hi24)) return null;
+  const z = vol60Z(v60, i);
+  if (z < RB_VOLZ) return null;
+  // freshness-critical leg: store-corrected oi4h, NaN-poisoned when untrusted
+  const oi4h = coin.oiTrusted === false ? NaN : coin.oi4h;
+  if (!(oi4h >= RB_OI4H)) return null;
+  // flush shape: OI high THEN ≥8% lower low within the past 48 bars
+  let mxV = 0;
+  let mxJ = -1;
+  for (let j = Math.max(0, i - 48); j <= i; j++) {
+    if (o60[j].value > mxV) {
+      mxV = o60[j].value;
+      mxJ = j;
+    }
+  }
+  if (!(mxV > 0)) return null;
+  let mnV = Infinity;
+  for (let j = mxJ; j <= i; j++) if (o60[j].value > 0) mnV = Math.min(mnV, o60[j].value);
+  if (!Number.isFinite(mnV) || !(mnV <= mxV * (1 - RB_FLUSH / 100))) return null;
+  return { volZ1h: z, oi4h };
+}
+
+// ---- S13 virgin V2 (處女增倉突破) on the 1H aggregation, mirroring backtest
+// --mode virgin --vg-def V2 bar-for-bar. Gate 2026-07-07 (296 幣, ~37d @1H,
+// Binance data, +10%/24h): ×2.76 (n=516, hit 39.9% vs base 14.5%), ALL
+// robustness cells ≥×1.85 (oi4h±25% ×2.78/×2.83 · oi24h±25% ×2.59/×2.98 ·
+// volZ±25% ×2.73/×2.80 · t15/h24 ×3.71 · t10/h48 ×1.85), overlap ⚡ 0% ·
+// R1 0% (定義互斥 by construction) · R2 32% · sqD3 29%. 申報: meanRet@24h
+// ≈ +0.01% — 呢個窗全家族都薄 (R1 同窗 re-gate 都係 +0.01%), 出場紀律行先。
+// EVAA 07-07 零調參 cross-check: 09:00/12:00/16:00/17:00/18:00 HKT 全亮 ✓。
+// Same live≠eval caveats as R1 (48-bar scan window vs harness warmup 54); the
+// freshness-critical oi4h leg uses store-corrected coin.oi4h with the NaN
+// fail-closed rule, while the day-scale oi24h leg reads the series (lag-
+// tolerant at 24h scale).
+const VG_OI4H = 3;
+const VG_OI24H = 8;
+const VG_VOLZ = 1.5;
+const VG_FLUSH = 8; // the R1 flush shape that must be ABSENT (V∩R1 = ∅)
+
+function computeVirginV2(coin: Coin): Ctx['virginV2'] {
+  const c60 = aggregateCandles(coin.candles, 12);
+  const v60 = aggregateVolume(coin.volume, c60, 12);
+  const o60 = aggregateLast(coin.oi, 12);
+  const H = Math.min(c60.length, v60.length, o60.length);
+  if (H < 26) return null;
+  const i = H - 1;
+  let hi24 = -Infinity;
+  for (let j = Math.max(0, i - 24); j < i; j++) hi24 = Math.max(hi24, c60[j].high);
+  if (!(c60[i].close > hi24)) return null;
+  const z = vol60Z(v60, i);
+  if (z < VG_VOLZ) return null;
+  const oi4h = coin.oiTrusted === false ? NaN : coin.oi4h;
+  if (!(oi4h >= VG_OI4H)) return null;
+  // virgin precondition: NO flush shape (OI high THEN ≥8% lower low) in window
+  let mxV = 0;
+  let mxJ = -1;
+  for (let j = Math.max(0, i - 48); j <= i; j++) {
+    if (o60[j].value > mxV) {
+      mxV = o60[j].value;
+      mxJ = j;
+    }
+  }
+  if (!(mxV > 0)) return null;
+  let mnV = Infinity;
+  for (let j = mxJ; j <= i; j++) if (o60[j].value > 0) mnV = Math.min(mnV, o60[j].value);
+  if (Number.isFinite(mnV) && mnV <= mxV * (1 - VG_FLUSH / 100)) return null; // flush present → R1 territory
+  // V2 leg: day-scale OI build from the series
+  if (!(i >= 24 && o60[i - 24].value > 0)) return null;
+  const oi24h = (o60[i].value / o60[i - 24].value - 1) * 100;
+  if (!(oi24h >= VG_OI24H)) return null;
+  return { volZ1h: z, oi4h, oi24h };
+}
+
+// S9/S10/S11 recording flags — sweep-meta evidence streams (E1 revalidation).
+// Shipped status is IRRELEVANT here: flags record whether each pre-registered
+// def's condition held, exactly like squeezeSignals for the unshipped setup.
+// Defs mirror scripts/backtest.ts modes rebuild/top/wbottom bar-for-bar on the
+// 1H aggregation (same eval≠live caveat class as ⚡/S2/S6).
+
+// [R1, R2, R3] — R1 shipped ×2.60; R2 ×1.46 / R3 ×2.31 recording-only.
+// H deliberately EXCLUDES f60 so the R1 leg evaluates the exact same bar as
+// computeRebuildR1 (a 429-shortened funding series must not shift i — that
+// desynced the badge from the flags on the first live sweep, 2026-07-07).
+// R3's funding read degrades to 0 when the funding series is short.
+export function rebuildSignals(coin: Coin): [0 | 1, 0 | 1, 0 | 1] | null {
+  const c60 = aggregateCandles(coin.candles, 12);
+  const v60 = aggregateVolume(coin.volume, c60, 12);
+  const o60 = aggregateLast(coin.oi, 12);
+  const f60 = aggregateLast(coin.fundingHist, 12);
+  const H = Math.min(c60.length, v60.length, o60.length);
+  if (H < 26) return null;
+  const i = H - 1;
+  let hi24 = -Infinity;
+  for (let j = Math.max(0, i - 24); j < i; j++) hi24 = Math.max(hi24, c60[j].high);
+  if (!(c60[i].close > hi24) || vol60Z(v60, i) < RB_VOLZ) return [0, 0, 0];
+  const oi4h = coin.oiTrusted === false ? NaN : coin.oi4h;
+  if (!(oi4h >= RB_OI4H)) return [0, 0, 0];
+  const r1 = computeRebuildR1(coin) != null;
+  const ret4h = i >= 4 && c60[i - 4].close > 0 ? (c60[i].close / c60[i - 4].close - 1) * 100 : NaN;
+  const r2 = ret4h >= 0 && ret4h <= 6;
+  const r3 = r1 && f60.length > i && f60[i].value <= 0.02;
+  return [r1 ? 1 : 0, r2 ? 1 : 0, r3 ? 1 : 0];
+}
+
+// [T1, T2, T3, T4] 派貨/頂部拒絕 — ALL recording-only (gate 2026-07-06: n=6/3/0/0,
+// 全部 < 20 floor; T1 headline ×6.31 但 meanRet +2.0% 正 — 插完即彈, 樣本不足未定案)
+export function distTopSignals(coin: Coin): [0 | 1, 0 | 1, 0 | 1, 0 | 1] | null {
+  const c60 = aggregateCandles(coin.candles, 12);
+  const v60 = aggregateVolume(coin.volume, c60, 12);
+  const o60 = aggregateLast(coin.oi, 12);
+  const f60 = aggregateLast(coin.fundingHist, 12);
+  // H excludes f60 (same bar-desync guard as rebuildSignals); T4's funding
+  // reads degrade to 0 when the funding series came back short (429 fallback)
+  const H = Math.min(c60.length, v60.length, o60.length);
+  if (H < 33) return null;
+  const i = H - 1;
+  const b = c60[i];
+  const px = b.close;
+  // common precondition: pumped ∧ near the high ∧ volume
+  if (!(c60[i - 24].close > 0) || (px / c60[i - 24].close - 1) * 100 < 15) return [0, 0, 0, 0];
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let j = i - 23; j <= i; j++) {
+    lo = Math.min(lo, c60[j].low);
+    hi = Math.max(hi, c60[j].high);
+  }
+  const pos24 = hi > lo ? (px - lo) / (hi - lo) : 0.5;
+  if (pos24 < 0.8 || vol60Z(v60, i) < 1.5) return [0, 0, 0, 0];
+  const oi4h = coin.oiTrusted === false ? NaN : coin.oi4h;
+  // T1 雙頂拒絕
+  let hPrev = -Infinity;
+  for (let j = i - 24; j <= i - 3; j++) hPrev = Math.max(hPrev, c60[j].high);
+  const t1 = hPrev > 0 && Math.abs(b.high / hPrev - 1) <= 0.01 && b.close <= b.high * 0.99 && b.close <= b.open;
+  // T2 新高背離拒絕
+  let hiPrev = -Infinity;
+  for (let j = i - 24; j < i; j++) hiPrev = Math.max(hiPrev, c60[j].high);
+  const range = b.high - b.low;
+  const t2 =
+    b.high > hiPrev && range > 0 && (b.high - Math.max(b.open, b.close)) / range >= 0.5 && oi4h <= -1.5;
+  // T3 量能高潮反轉
+  const p = c60[i - 1];
+  let lo2 = Infinity;
+  let hi2 = -Infinity;
+  for (let j = i - 24; j <= i - 1; j++) {
+    lo2 = Math.min(lo2, c60[j].low);
+    hi2 = Math.max(hi2, c60[j].high);
+  }
+  const posC = hi2 > lo2 ? (p.close - lo2) / (hi2 - lo2) : 0.5;
+  const t3 = vol60Z(v60, i - 1) >= 2.5 && posC >= 0.85 && b.close < p.low;
+  // T4 過熱滯漲
+  const t4 =
+    f60[i].value >= 0.015 &&
+    f60[i].value > f60[i - 8].value &&
+    (px / c60[i - 4].close - 1) * 100 <= 1;
+  return [t1 ? 1 : 0, t2 ? 1 : 0, t3 ? 1 : 0, t4 ? 1 : 0];
+}
+
+// [W1, W2, W3] 雙底接人 — ALL recording-only (gate 2026-07-06: W2 主 ×1.41 過
+// 但 t10/h48 ×1.14 < 1.15 cross-target floor → 死於 robustness, S6-D2 同款;
+// W1 ×1.21 / W3 ×1.22 唔過主 gate). E1 新窗重驗.
+export function wbottomSignals(coin: Coin): [0 | 1, 0 | 1, 0 | 1] | null {
+  const c60 = aggregateCandles(coin.candles, 12);
+  const v60 = aggregateVolume(coin.volume, c60, 12);
+  const o60 = aggregateLast(coin.oi, 12);
+  const H = Math.min(c60.length, v60.length, o60.length);
+  if (H < 30) return null;
+  const i = H - 1;
+  const px = c60[i].close;
+  // anti-knife: pullback-in-pump only. Scan tier has no EMA50(1H) (needs ≥52
+  // bars of long series) — the ret24h branch alone applies, a declared strict
+  // subset (S7-B2 limitation class).
+  const ret24 = c60[i - 24]?.close > 0 ? (px / c60[i - 24].close - 1) * 100 : 0;
+  if (!(ret24 >= 10)) return [0, 0, 0];
+  const isMin = (j: number) => j >= 1 && j + 1 < H && c60[j].low <= c60[j - 1].low && c60[j].low <= c60[j + 1].low;
+  const z = vol60Z(v60, i);
+  // W2 spring
+  let w2 = false;
+  if (z >= 1.25 && c60[i].close > c60[i].open) {
+    const s = i - 1;
+    for (let j1 = s - 12; j1 <= s - 2; j1++) {
+      if (!isMin(j1)) continue;
+      if (c60[s].low < c60[j1].low && c60[s].close > c60[j1].low) {
+        w2 = true;
+        break;
+      }
+    }
+  }
+  // W1/W3 classic double bottom
+  let w1 = false;
+  if (z >= 1.5) {
+    outer: for (let j2 = i - 1; j2 >= i - 6; j2--) {
+      if (j2 < 3) break;
+      if (!isMin(j2)) continue;
+      for (let sep = 2; sep <= 12; sep++) {
+        const j1 = j2 - sep;
+        if (j1 < 1) break;
+        if (!isMin(j1)) continue;
+        if (Math.abs(c60[j2].low / c60[j1].low - 1) > 0.01) continue;
+        let neck = -Infinity;
+        for (let j = j1 + 1; j < j2; j++) neck = Math.max(neck, c60[j].high);
+        if (neck > 0 && px > neck) {
+          w1 = true;
+          break outer;
+        }
+      }
+    }
+  }
+  const oi4h = coin.oiTrusted === false ? NaN : coin.oi4h;
+  const w3 = w1 && oi4h >= 0;
+  return [w1 ? 1 : 0, w2 ? 1 : 0, w3 ? 1 : 0];
+}
+
+// ---- S7 boarding B2 (EMA 收復) on the 1H aggregation, mirroring backtest
+// --mode boarding --bd-def B2 bar-for-bar. Gate 2026-07-06: ×2.04, ALL
+// robustness cells ≥×1.40, anti-chase ablation causal (capped ×2.04 vs
+// uncapped ×1.48), overlap ⚡ 0% / squeeze 15%, median 11h to +10% touch.
+// NOTE: B2 needs ~100 1H bars (EMA50 warm + 48 below-bars) but the 48h 5m base
+// aggregates to only ~48 — so the live mirror runs off the coin's LONG 1H
+// series (~25d, attached by fetchLiveCoin on detail views). Scan/recorder
+// coins carry no long series → null there; the read is detail-view-only and
+// sweep-meta recording flags are deferred until long-series plumbing exists
+// (E1 re-tests via the harness directly, no recordings dependency).
+function computeBoardingB2(coin: Coin): Ctx['boardingB2'] {
+  const c60 = coin.long?.candles ?? aggregateCandles(coin.candles, 12);
+  const v60 = coin.long?.volume ?? aggregateVolume(coin.volume, c60, 12);
+  const H = Math.min(c60.length, v60.length);
+  const NEED_BELOW = 48;
+  if (H < NEED_BELOW + 52) return null; // EMA50 warm + 48 below-bars + cross bar
+  const closes = c60.map((c) => c.close);
+  const emaAt = (p: number): number[] => {
+    const out = new Array<number>(H).fill(NaN);
+    const k = 2 / (p + 1);
+    let e = closes.slice(0, p).reduce((a, b) => a + b, 0) / p;
+    out[p - 1] = e;
+    for (let j = p; j < H; j++) {
+      e = closes[j] * k + e * (1 - k);
+      out[j] = e;
+    }
+    return out;
+  };
+  const e20 = emaAt(20);
+  const e50 = emaAt(50);
+  const i = H - 1;
+  const px = closes[i];
+  // anti-chase (structural)
+  if (!((px / closes[i - 4] - 1) * 100 <= 6)) return null;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let j = i - 23; j <= i; j++) {
+    lo = Math.min(lo, c60[j].low);
+    hi = Math.max(hi, c60[j].high);
+  }
+  if (hi > lo && (px - lo) / (hi - lo) > 0.7) return null;
+  // fresh EMA20 cross after ≥48h below EMA50
+  if (!(px > e20[i]) || !(closes[i - 1] <= e20[i - 1])) return null;
+  for (let j = i - NEED_BELOW; j < i; j++) {
+    if (!(closes[j] < e50[j])) return null;
+  }
+  const win = v60.slice(Math.max(0, i - 24), i).map((b) => b.value);
+  if (win.length < 8) return null;
+  const m = win.reduce((a, b) => a + b, 0) / win.length;
+  const sd = Math.sqrt(win.reduce((a, b) => a + (b - m) ** 2, 0) / win.length);
+  const z = sd > 0 ? (v60[i].value - m) / sd : 0;
+  if (z < 1.5) return null;
+  return { volZ1h: z, hoursBelow: NEED_BELOW };
+}
+
+// ---- S6 squeeze on the 1H aggregation, mirroring scripts/backtest.ts
+// --mode squeeze (def D3, confirm either) bar-for-bar. Gate 2026-07-06: D3
+// breakout ×1.42, robust ×1.29-1.39 (see docs/roadmap/S6-bb-squeeze.md results).
+// Live approximation vs eval: the oi-confirm leg uses the coin's oi series
+// (store-fresh on warm coins post-P1, laggy on cold) and up-volume share in
+// place of rubik taker share — same eval≠live caveat class as ⚡/S2.
+const SQZ_BB_P = 20;
+const SQZ_KT_MULT = 1.5;
+const SQZ_RECENT_H = 6;
+const SQZ_VOLZ = 1.5;
+function computeSqueeze(coin: Coin): { sqzSetup: boolean; sqzBreakout: Ctx['sqzBreakout'] } {
+  const c60 = aggregateCandles(coin.candles, 12);
+  const v60 = aggregateVolume(coin.volume, c60, 12);
+  const f60 = aggregateLast(coin.fundingHist, 12);
+  const o60 = aggregateLast(coin.oi, 12);
+  const H = c60.length;
+  if (H < SQZ_BB_P + 2) return { sqzSetup: false, sqzBreakout: null };
+  // throttled partial coin — funding/oi/volume shorter than the candles would
+  // throw inside setupAt (every j derives from c60.length); fail closed, no read
+  if (f60.length < H || o60.length < H || v60.length < H)
+    return { sqzSetup: false, sqzBreakout: null };
+
+  // D3 geometry at bar j: BB(20,2) inside Keltner(20, 1.5·ATR) with a shared
+  // SMA centre reduces to 2·sd ≤ 1.5·ATR ⇔ bw ≤ 2·1.5·atrN (backtest sqSeries).
+  const squeezedAt = (j: number): boolean => {
+    if (j < SQZ_BB_P) return false; // needs a previous close for true range
+    let m = 0;
+    for (let k = j - SQZ_BB_P + 1; k <= j; k++) m += c60[k].close;
+    m /= SQZ_BB_P;
+    if (!(m > 0)) return false;
+    let vv = 0;
+    let tr = 0;
+    for (let k = j - SQZ_BB_P + 1; k <= j; k++) {
+      vv += (c60[k].close - m) ** 2;
+      const pc = c60[k - 1].close;
+      tr += Math.max(c60[k].high - c60[k].low, Math.abs(c60[k].high - pc), Math.abs(c60[k].low - pc));
+    }
+    const bw = (4 * Math.sqrt(vv / SQZ_BB_P)) / m;
+    const atrN = tr / SQZ_BB_P / m;
+    return atrN > 0 && bw <= 2 * SQZ_KT_MULT * atrN;
+  };
+  // direction confirm (either): funding ≤ 0 OR (oi 4h not falling ∧ up-volume share ≥ 0.5)
+  const setupAt = (j: number): boolean => {
+    if (!squeezedAt(j)) return false;
+    if (f60[j].value <= 0) return true;
+    if (j < 4 || !(o60[j - 4].value > 0)) return false;
+    if (!(o60[j].value / o60[j - 4].value - 1 >= 0)) return false;
+    let up = 0;
+    let tot = 0;
+    for (let k = j - 3; k <= j; k++) {
+      tot += v60[k].value;
+      if (v60[k].up) up += v60[k].value;
+    }
+    return tot > 0 && up / tot >= 0.5;
+  };
+
+  const i = H - 1;
+  const sqzSetup = setupAt(i);
+  // breakout: setup WAS on within the last 6 bars (bandwidth explodes on the
+  // breakout bar itself — "still squeezed now" would never fire), close breaks
+  // the high of the range since that setup bar, on expanded 1H volume.
+  let sqzBreakout: Ctx['sqzBreakout'] = null;
+  let firstSq = -1;
+  for (let j = Math.max(SQZ_BB_P, i - SQZ_RECENT_H); j < i; j++) {
+    if (setupAt(j)) {
+      firstSq = j;
+      break;
+    }
+  }
+  if (firstSq >= 0) {
+    let hi = -Infinity;
+    for (let j = firstSq; j < i; j++) hi = Math.max(hi, c60[j].high);
+    if (c60[i].close > hi) {
+      const win = v60.slice(Math.max(0, i - 24), i).map((b) => b.value);
+      if (win.length >= 8) {
+        const mv = win.reduce((a, b) => a + b, 0) / win.length;
+        const sdv = Math.sqrt(win.reduce((a, b) => a + (b - mv) ** 2, 0) / win.length);
+        const z = sdv > 0 ? (v60[i].value - mv) / sdv : 0;
+        if (z >= SQZ_VOLZ) sqzBreakout = { volZ1h: z, sinceH: i - firstSq };
+      }
+    }
+  }
+  return { sqzSetup, sqzBreakout };
 }
 
 // S2 spot cross-source detectors. Gated PER detector by the backtest gate
@@ -277,6 +685,41 @@ function buildCtx(coin: Coin): Ctx | null {
 // 3rd read) needs basis history and lands with the recording-eval work — not here.
 const SPOT_PUMP_SHIPPED = true; // gate: +10%/24h lift ×1.79 — spotVolZ the causal driver (momentum-only ×1.27), robust ±25% (×1.70-1.90), 76/114 coins, look-ahead clean
 const SPOT_ACCUM_SHIPPED = false; // gate: ×0.54 (worse than baseline) — recording-only
+
+// S6 squeeze detectors (scripts/backtest.ts --mode squeeze; gate run 2026-07-06,
+// ~37d @1H, 114 coins, +10%/24h): D3 breakout ×1.42, robust (kt±25% ×1.29/1.33,
+// volZ±25% ×1.36/1.39, t15h24 ×1.31), 113 coins, meanRet +1.3% vs base −0.1%.
+// squeeze-setup ALONE tested ×0.85-0.97 on every def → no read, recording-only.
+// D2 收斂比 headline ×1.73 but FAILED robustness (thresh−25% ×0.58) → not shipped.
+const SQUEEZE_BREAKOUT_SHIPPED = true;
+const SQUEEZE_SETUP_SHIPPED = false; // below baseline — iron rule, no UI
+
+// S7 boarding (docs/roadmap/S7-boarding.md; gate 2026-07-06, ~37d @1H, 114 coins):
+// B2 EMA收復 ×2.04, ALL robustness ≥×1.40, cross-target ×1.40/×1.49, meanRet
+// +3.9%/signal, ⚡ overlap 0% / squeeze 15%, median 11h to +10% touch → SHIPPED
+// (detail-view only, needs the long 1H series). B1 深跌首彈 meanRet −3.4% (knife)
+// and B3 核心線 composite ×0.74 (below baseline) → dead, not even recording flags.
+const BOARDING_B2_SHIPPED = true;
+// D1-setup (bbPctile≤0.1) is the old volatility-squeeze read's metric: ×0.85 as
+// a standalone setup → the read is retired below (kept in code, gate off).
+const VOL_SQUEEZE_RETIRED = true;
+
+// S9 rebuild (docs/roadmap/S9-rebuild-breakout.md; gate 2026-07-06, 150 幣 ~37d
+// @1H, +10%/24h): R1 ×2.60, ALL robustness ≥×1.83, overlap ⚡ 9%/sqD3 35%,
+// medTTH 8h → SHIPPED (badge + Telegram, 用戶拍板過 gate 即通知). R2 ×1.46 /
+// R3 ×2.31 recording-only. 申報: meanRet@24h +0.3% 薄.
+const REBUILD_R1_SHIPPED = true;
+// S13 virgin (docs/roadmap/S13-virgin-expansion.md; gate 2026-07-07, 296 幣
+// ~37d @1H Binance, +10%/24h): V2 ×2.76, ALL robustness ≥×1.85, overlap ⚡ 0%
+// / R1 0% / R2 32% / sqD3 29% → SHIPPED. V1 ×2.27 / V3 ×2.19 recording-only.
+// 申報: meanRet@24h ≈ +0.01% (呢個窗全家族都薄; R1 同窗 re-gate 都係 +0.01%).
+const VIRGIN_V2_SHIPPED = true;
+// S10 top (SHORT): T1-T4 全部 n<20 (6/3/0/0) → recording-only, NO ship, NO
+// short card, NO paper S-arm until E1 accumulates samples.
+// S11 wbottom: W2 主 ×1.41 過但 t10/h48 ×1.14 敗 cross-target → recording-only.
+// S9-R2 升班覆核 2026-07-07 (Binance 窗): ×1.33 主 cell 但 t10/h48 ×1.07 敗
+// cross-target → 維持 recording-only (同 S11-W2 死法).
+// (All enforced by simply having no SHIPPED consts / insights here.)
 
 // 現貨帶動拉升 — real spot buying leads the perp breakout: price up, OI flat,
 // spot volume spikes, spot not lagging (basis ≤ +0.05%).
@@ -315,12 +758,70 @@ export function spotSignals(coin: Coin): [0 | 1, 0 | 1, 0 | 1] | null {
   return [spotLedPump(ctx) ? 1 : 0, stealthSpotAccum(ctx) ? 1 : 0, 0];
 }
 
+// S6: squeeze reads as 0/1 flags for sweep-meta recording ([setup, breakout]).
+// Computed regardless of the ship flags — the un-shipped setup stage keeps
+// accumulating evidence for E1 revalidation. Null when the coin lacks the bars.
+export function squeezeSignals(coin: Coin): [0 | 1, 0 | 1] | null {
+  const c60 = aggregateCandles(coin.candles, 12);
+  if (c60.length < SQZ_BB_P + 2) return null;
+  const sq = computeSqueeze(coin);
+  return [sq.sqzSetup ? 1 : 0, sq.sqzBreakout ? 1 : 0];
+}
+
 // S2: does spot-led-pump fire AND is it shipped? Used by toLite to set the
 // screener-row badge flag, so the badge honours the per-detector gate above.
 export function spotPumpFires(coin: Coin): boolean {
   if (!SPOT_PUMP_SHIPPED || coin.spotCandles == null) return false;
   const ctx = buildCtx(coin);
   return ctx ? spotLedPump(ctx) : false;
+}
+
+// S9: does rebuild-R1 fire AND is it shipped? toLite badge flag + the recorder's
+// Telegram rising-edge source (user decision 2026-07-06: gate-passers notify).
+export function rebuildFires(coin: Coin): boolean {
+  return REBUILD_R1_SHIPPED && computeRebuildR1(coin) != null;
+}
+
+// S13: does virgin-V2 fire AND is it shipped? Same tier as R1 (badge + Telegram
+// via the recorder's rising-edge class; gate-passers notify per the standing
+// 2026-07-06 拍板).
+export function virginFires(coin: Coin): boolean {
+  return VIRGIN_V2_SHIPPED && computeVirginV2(coin) != null;
+}
+
+// [V1, V2, V3] — V2 shipped ×2.76; V1 ×2.27 / V3 ×2.19 recording-only (E1
+// evidence stream). Same H/bar-desync guard as rebuildSignals; V3's funding
+// read degrades to 0 when the funding series came back short.
+export function virginSignals(coin: Coin): [0 | 1, 0 | 1, 0 | 1] | null {
+  const c60 = aggregateCandles(coin.candles, 12);
+  const v60 = aggregateVolume(coin.volume, c60, 12);
+  const o60 = aggregateLast(coin.oi, 12);
+  const f60 = aggregateLast(coin.fundingHist, 12);
+  const H = Math.min(c60.length, v60.length, o60.length);
+  if (H < 26) return null;
+  const i = H - 1;
+  let hi24 = -Infinity;
+  for (let j = Math.max(0, i - 24); j < i; j++) hi24 = Math.max(hi24, c60[j].high);
+  if (!(c60[i].close > hi24) || vol60Z(v60, i) < VG_VOLZ) return [0, 0, 0];
+  const oi4h = coin.oiTrusted === false ? NaN : coin.oi4h;
+  if (!(oi4h >= VG_OI4H)) return [0, 0, 0];
+  let mxV = 0;
+  let mxJ = -1;
+  for (let j = Math.max(0, i - 48); j <= i; j++) {
+    if (o60[j].value > mxV) {
+      mxV = o60[j].value;
+      mxJ = j;
+    }
+  }
+  if (!(mxV > 0)) return [0, 0, 0];
+  let mnV = Infinity;
+  for (let j = mxJ; j <= i; j++) if (o60[j].value > 0) mnV = Math.min(mnV, o60[j].value);
+  if (Number.isFinite(mnV) && mnV <= mxV * (1 - VG_FLUSH / 100)) return [0, 0, 0]; // flush → R1 territory
+  const v1 = 1;
+  const oi24h = i >= 24 && o60[i - 24].value > 0 ? (o60[i].value / o60[i - 24].value - 1) * 100 : NaN;
+  const v2 = oi24h >= VG_OI24H;
+  const v3 = f60.length > i && f60[i].value <= 0.02;
+  return [v1, v2 ? 1 : 0, v3 ? 1 : 0];
 }
 
 // Which candle a given read marks: event reads point at their event bar; every
@@ -584,9 +1085,80 @@ const DETECTORS: Detector[] = [
           detail: `價格處高位（${Math.round(c.pos * 100)}% 位置）且放量（量Z ${c.volZ.toFixed(1)}）卻無漲幅，上方賣壓正吸收買盤，突破力道存疑。`,
         }
       : null,
-  // compression before expansion
+  // S6 壓縮突破 — TTM squeeze (BB inside Keltner) resolved upward on volume.
+  // Backtest-gated: ×1.42 lift, robust ±25% (see SQUEEZE_BREAKOUT_SHIPPED note).
   (c) =>
-    c.bbPctile <= 0.1 && c.volZ <= -0.3 && Math.abs(c.change1h) < 0.8
+    SQUEEZE_BREAKOUT_SHIPPED && c.sqzBreakout
+      ? {
+          id: 'squeeze-breakout',
+          next: '若回踩盤整高點不破 → 順勢佈局位；若收返入盤整區內 → 假突破，訊號失效。',
+          title: '壓縮突破',
+          tone: 'bull',
+          priority: 7,
+          detail: `布林帶收入 Keltner 通道（TTM 壓縮）${c.sqzBreakout.sinceH} 小時後，放量升穿盤整高點（1H 量Z ${c.sqzBreakout.volZ1h.toFixed(1)}）。回測 lift ×1.42（±25% 穩健 ×1.29-1.39），排序參考，非進場訊號。`,
+        }
+      : null,
+  // S9 增倉突破 — flush→rebuild→breakout, the CAP-shaped complement of ⚡.
+  // Backtest-gated: ×2.60, all robustness ≥×1.83 (see REBUILD_R1_SHIPPED note).
+  (c) =>
+    REBUILD_R1_SHIPPED && c.rebuildR1
+      ? {
+          id: 'rebuild-breakout',
+          next: '若回踩突破位(24h 高)不破 → 順勢位;若收返 24h 高之下 → 假突破,訊號失效。期望值薄 — 出場紀律比入場更重要。',
+          title: '增倉突破',
+          tone: 'bull',
+          priority: 8,
+          detail:
+            `48h 內 OI 曾縮倉 ≥8% 之後重建(oi4h ${p1(c.rebuildR1.oi4h)}),帶量突破 24h 高(1H 量Z ${c.rebuildR1.volZ1h.toFixed(1)})— ⚡ 嘅互補形態(CAP 型:縮完倉、重建晒先突破)。` +
+            `回測(150 幣、37 日):+10%/24h 命中 26.7% vs 基準 10.3%(lift ×2.60,全穩健 ≥×1.83,中位 8h 掂 +10%);惟 24h 平均回報僅 +0.3%,排序參考,非進場訊號。`,
+        }
+      : null,
+  // S13 處女增倉 — virgin OI expansion (no flush anywhere in the window) breaks
+  // the 24h high on volume. Backtest-gated: ×2.76, all robustness ≥×1.85 (see
+  // VIRGIN_V2_SHIPPED note). EVAA-shaped: the no-flush complement of 增倉突破.
+  (c) =>
+    VIRGIN_V2_SHIPPED && c.virginV2
+      ? {
+          id: 'virgin-breakout',
+          next: '若回踩突破位(24h 高)不破 → 順勢位;若收返 24h 高之下 → 假突破,訊號失效。期望值薄 — 出場紀律比入場更重要。',
+          title: '處女增倉',
+          tone: 'bull',
+          priority: 8,
+          detail:
+            `48h 內 OI 從未冚倉(零 flush)、純增倉擴張(oi24h ${p1(c.virginV2.oi24h)}、oi4h ${p1(c.virginV2.oi4h)}),帶量突破 24h 高(1H 量Z ${c.virginV2.volZ1h.toFixed(1)})— 增倉突破嘅互補形態(EVAA 型:由頭到尾冇人冚倉)。` +
+            `回測(296 幣、37 日 Binance):+10%/24h 命中 39.9% vs 基準 14.5%(lift ×2.76,全穩健 ≥×1.85);惟 24h 平均回報極薄,排序參考,非進場訊號。`,
+        }
+      : null,
+  // S7 上車位 — long-suppressed coin fresh-crosses EMA20 on volume, pre-pump
+  // (anti-chase gated). The one boarding def that survived the full gate.
+  (c) =>
+    BOARDING_B2_SHIPPED && c.boardingB2
+      ? {
+          id: 'boarding-reclaim',
+          next: '若回踩 EMA20 唔破 → 上車位成立；若收返落 EMA20 之下 → 假收復，訊號失效。',
+          title: '上車位',
+          tone: 'bull',
+          priority: 7,
+          detail: `連續 ${c.boardingB2.hoursBelow}h 收喺 EMA50 之下後，放量收復 EMA20（1H 量Z ${c.boardingB2.volZ1h.toFixed(1)}），且未追價（4h 未拉、唔喺區間頂）。回測 lift ×2.04（全 robustness ≥×1.40，中位提前 11h 掂 +10%），排序參考，非進場訊號。`,
+        }
+      : null,
+  // squeeze-setup — recording-only (×0.85-0.97, below baseline); gate off.
+  (c) =>
+    SQUEEZE_SETUP_SHIPPED && c.sqzSetup
+      ? {
+          id: 'squeeze-setup',
+          next: '等突破方向確認。',
+          title: '壓縮蓄勢',
+          tone: 'info',
+          priority: 6,
+          detail: '布林帶收入 Keltner 通道，波動壓縮中。',
+        }
+      : null,
+  // compression before expansion — RETIRED 2026-07-06: its metric (D1 48h-pctile
+  // ≤0.1) backtested ×0.85 standalone (below baseline) and never lit on the ARX
+  // motivating case; superseded by the gated squeeze-breakout above.
+  (c) =>
+    !VOL_SQUEEZE_RETIRED && c.bbPctile <= 0.1 && c.volZ <= -0.3 && Math.abs(c.change1h) < 0.8
       ? {
           id: 'volatility-squeeze',
           next: '若放量向上突破 → 跟進突破方向（留意 ⚡）；若向下破位 → LONG ONLY 迴避，等回穩。',

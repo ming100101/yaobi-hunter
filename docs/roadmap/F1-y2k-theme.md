@@ -78,3 +78,15 @@
 - lightweight-charts holds colors internally — without the key-remount the charts stay dark; don't try to patch every `applyOptions` call site instead (remount is the sanctioned path).
 - Pixel fonts at 13px can hurt readability of dense numbers — if verification step 3 fails for `.num` cells, add `:root[data-theme='y2k'] .num { font-family: 'Inter', sans-serif; }` (numbers keep a readable font; vibe stays elsewhere).
 - Font file ~1-8MB (CJK) — woff2 only, `font-display: swap`, and it ships in dist/ + SEA assets (make-exe includes dist — check `sea-config.json` asset globs cover `fonts/`).
+
+---
+
+## Results (2026-07-07)
+
+- **Shipped.** Font: Fusion Pixel 12px-proportional **zh_hant** woff2 (v2026.07.01 release), **703KB** self-hosted at `public/fonts/fusion-pixel.woff2` + OFL licence alongside. `document.fonts.check('13px "Fusion Pixel"')` → true in-app.
+- Token block as specced + F1 section at theme.css bottom. Extra dark-hardcoded values found beyond the spec's body-gradient note and overridden y2k-scoped (never inline): `.nav-tabs` / `.tf-seg` / `.hist-date input` pills (`rgba(11,7,22,…)`), `.nav-tab.active` / `.tf-btn.active` violet gradients, `.ohlc-legend` box.
+- Toggle: 🎀 ghost button in BOTH `.top-actions` (screener + coin detail); App owns `theme: ThemeName` state, applies via `documentElement.dataset.theme`, persists under kv `'theme'` — **added to cache.ts SERVER_KEYS** so it lives in kv.json and survives port drift (P0), verified via GET /kv after toggle.
+- Charts: `key={`price-${theme}`}` etc. on the four panels in CoinDetail → remount re-reads tokens; verified live — candles/EMA/BB/vol/OI/funding/strength all pastel after toggle, crosshair sync + timeframe switch still fine.
+- Verification: typecheck clean; toggle flips whole app instantly; reload persists (dataset=y2k after reload); CJK pixel glyphs render (掃描/蓄力/出貨 etc., no tofu); `.num` columns stayed aligned (grid-driven) so the Inter fallback for numbers was NOT needed; dark theme toggles back pixel-identical (screenshot-compared — only visible delta is the 🎀 button itself).
+- `make-exe` walks dist/ recursively → font embeds automatically; exe rebuilt same day.
+- Not done: settings 外觀 section (spec gates it on U1, which hasn't landed).

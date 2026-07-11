@@ -51,7 +51,7 @@ function aggregateFrom(
   mult: number,
 ): Coin {
   if (mult <= 1) {
-    return { ...coin, ...src, long: undefined };
+    return { ...coin, ...src, long: undefined, deep: undefined };
   }
   const candles = aggregateCandles(src.candles, mult);
   return {
@@ -61,16 +61,19 @@ function aggregateFrom(
     oi: aggregateLast(src.oi, mult),
     fundingHist: aggregateLast(src.fundingHist, mult),
     strengthHist: aggregateLast(src.strengthHist, mult),
-    long: undefined, // the aggregated view is self-contained; don't carry the raw long series
+    long: undefined, // the aggregated view is self-contained; don't carry the raw series
+    deep: undefined,
   };
 }
 
-// Produce the display Coin for a timeframe: 5m/15m from the 5m base, 1h/4h from
-// the 1H long series when present (weeks of history), else a graceful fallback
-// to aggregating the 48h 5m base.
+// Produce the display Coin for a timeframe: 5m/15m from the 14d deep series
+// when present (detail fetch), else the 48h 5m base; 1h/4h from the 1H long
+// series when present (weeks of history), else a graceful fallback to
+// aggregating the base. Detectors/interpret never read these display series.
 export function aggregateForTf(coin: Coin, tf: Timeframe): Coin {
   const spec = TIMEFRAMES.find((t) => t.key === tf) ?? TIMEFRAMES[0];
   if (spec.base === '1h' && coin.long) return aggregateFrom(coin, coin.long, spec.mult);
+  if (spec.base === '5m' && coin.deep) return aggregateFrom(coin, coin.deep, spec.mult);
   return aggregateFrom(coin, coin, spec.mult5);
 }
 

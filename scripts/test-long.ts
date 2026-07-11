@@ -1,13 +1,10 @@
 // Verify the 1H long-history series: bar counts per timeframe, cross-series
 // alignment (ChartSync needs equal lengths), OHLC validity, strength finite.
-import { fetchLiveCoin } from '../src/data/okx';
+import { BN_LIVE, fetchLiveCoin } from '../src/data/binance';
 import { aggregateForTf } from '../src/lib/aggregate';
 
-const OKX = 'https://www.okx.com';
-const hit = (b: string) => ({ instId: `${b}-USDT-SWAP`, base: b, last: 0, change24h: 0, vol24hUsd: 0 });
-
 for (const sym of ['DOGE', 'SOL']) {
-  const coin = await fetchLiveCoin(OKX, hit(sym), Date.now());
+  const coin = await fetchLiveCoin(BN_LIVE, sym, Date.now());
   const days = (arr: { time: number }[]) =>
     ((arr[arr.length - 1].time - arr[0].time) / 86400).toFixed(1);
   console.log(

@@ -34,3 +34,10 @@
 ## 陷阱 / Do-NOT
 - 數字(×2.04 等)要同 README/analyze.ts 註釋一致 — 唔好自創統計。E1 重驗證改變結論時,呢度要跟住改(加入 E1 checklist 第 5 步嘅檢查項)。
 - Keep it one modal — no multi-step tour library, no overlay arrows (scope discipline).
+
+## Results — ✅ shipped 2026-07-08(/loop autonomous)
+`src/components/HelpModal.tsx`(card overlay + ✕/Esc/backdrop close)· ScreenerList `.top-actions`「?」ghost 掣 · first-run once-only(kv `help-seen`)· theme.css `.help-*` styles。typecheck 綠;瀏覽器 verified(? 開、4 sections 齊、✕ 關、截圖確認)。
+
+**刻意 deviation(誠實文化 > verbatim 數字):** modal **冇** hardcode per-signal lift 數字(×2.04 等)。原因:呢啲數字啱啱(2026-07-08 baseline audit + E1)俾放入 active revalidation — ⚡ flush 證實負 filter、⚡/D3/spot-pump 特殊條件冇加值。spec 個 陷阱 明講「E1 改變結論時 modal 要跟住改」,而今晚正正改咗。所以 modal 用「回測衍生、示範性、每月重驗證,數字見 roadmap 報告」嘅誠實框架,唔 bake 入爭議中嘅具體數,亦唔自把自為喺 UI 講「⚡ 有問題」(留俾用戶 decide)。數字定案後可以加返(連 tier legend,E2)。
+
+**Deferred(scope):** badge-click → 開 modal(step 4)。核心(modal + 掣 + first-run)已足;badge shortcut 之後補。

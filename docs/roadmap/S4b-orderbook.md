@@ -31,3 +31,21 @@
 ## 陷阱 / Do-NOT
 - books5 top-5 levels are thin and spoofable — this is exactly why it ships as recording-only until months of eval say otherwise. Do NOT promote to a badge in this spec.
 - Do NOT bump to books-full (`sz=400`) — heavier payloads, same spoofability, no eval evidence yet.
+
+## Results / closure
+
+**✖ SUPERSEDED 2026-07-08 — not built (goal achieved by Binance Vision, same as S4a).**
+
+S4b's purpose was recording orderbook imbalance for *future eval of predictive power*. That data exists retroactively, at higher fidelity, via the **Binance Vision bookDepth dump** — verified live this session:
+
+```
+data.binance.vision/data/futures/um/daily/bookDepth/<SYM>/<SYM>-bookDepth-<date>.zip
+header: timestamp,percentage,depth,notional
+2026-06-15 00:00:04,-5.00,6851.682,439751940.22   (BTCUSDT: bid band −5%, notional USD)
+```
+
+- **Same metric, richer, free.** `obImb = (Σ bid notional − Σ ask notional)/(Σ …)` over the percentage bands is computable directly from the dump — per **minute** (vs S4b's 15-min sweep), **full universe** (vs ~25 candidates), **months retroactive** (vs forward-only), and at a **±1-5% band that is LESS spoofable** than S4b's thin top-5 levels (the exact weakness the 陷阱 warns about).
+- **Zero live-sweep cost.** Self-recording would spend a per-sweep `books5` pool to collect a strictly-inferior, spoofable, 15-min, forward-only stream. Against the honest-stats discipline (cf. S4a).
+- **No consumer waiting.** S4b explicitly ships no detector/UI — it's collection for eval, and the eval can run on Vision. If a future *live* orderbook detector ever passes a gate, its live `books` fetch is added *with that detector* (as EA's LS fetch is) — a separate task, not S4b.
+
+To actually TEST the orderbook-imbalance hypothesis later: add a `bookDepth` loader to `scripts/backtest5m.ts` (same shape as the `--metrics` daily-dump loader) and backtest `obImb` against a state-matched baseline (per the 2026-07-08 baseline-audit lesson). Not built now — the 陷阱's spoofability caveat + zero evidence make it low-priority speculation. Closed with the same reasoning as S4a.

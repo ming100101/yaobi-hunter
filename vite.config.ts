@@ -150,10 +150,11 @@ function notifyEndpoints(): PluginOption {
   };
 }
 
-// Proxy OKX public market-data through the dev server so the browser makes
+// Proxy Binance public market-data through the dev server so the browser makes
 // same-origin requests (no CORS) and the upstream call originates from the
-// user's machine. Binance/Bybit are geo-blocked from many regions; OKX is
-// widely reachable. Both /api and /futures-style paths live under www.okx.com.
+// user's machine. Perp data (fapi + futures/data paths) lives on
+// fapi.binance.com; spot on api.binance.com — hence two prefixes, matching
+// BN_PROXY in src/data/binance.ts.
 const envPort = process.env.PORT ? Number(process.env.PORT) : undefined;
 
 export default defineConfig({
@@ -167,20 +168,17 @@ export default defineConfig({
     port: envPort ?? 5173,
     strictPort: envPort !== undefined,
     proxy: {
-      '/okx': {
-        target: 'https://www.okx.com',
+      '/bnf': {
+        target: 'https://fapi.binance.com',
         changeOrigin: true,
         secure: true,
-        rewrite: (p) => p.replace(/^\/okx/, ''),
+        rewrite: (p) => p.replace(/^\/bnf/, ''),
       },
-      // Binance public data bucket (S3 XML listing endpoint) — used only to
-      // enumerate the UM-futures symbol list (the live fapi API is geo-blocked;
-      // the bucket is not). data.binance.vision itself serves an HTML app.
-      '/bnv': {
-        target: 'https://s3-ap-northeast-1.amazonaws.com',
+      '/bns': {
+        target: 'https://api.binance.com',
         changeOrigin: true,
         secure: true,
-        rewrite: (p) => p.replace(/^\/bnv/, '/data.binance.vision'),
+        rewrite: (p) => p.replace(/^\/bns/, ''),
       },
     },
   },

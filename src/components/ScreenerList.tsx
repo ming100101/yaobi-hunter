@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   CoinLite,
   Regime,
@@ -8,6 +8,7 @@ import type {
   ScreenerSortKey,
   SignalTimes,
   SignalTimesEntry,
+  ThemeName,
 } from '../types';
 import type { PaperState } from '../lib/paper';
 import BrandMark from './BrandMark';
@@ -16,6 +17,10 @@ import PaperChip from './PaperChip';
 import { RegimeTag, REGIME_META } from './RegimeTag';
 import Sparkline from './Sparkline';
 import { fmtAge, fmtClock, fmtMoney, fmtPct, pctSign, strengthCls } from '../lib/format';
+import { top10Ranks } from '../lib/rank';
+import { EARLY_PUMP_SHIPPED, IGNITION_SHIPPED } from '../lib/analyze'; // S14 badge gate (false); 5m 點火 badge gate (true, 2026-07-09)
+import { kvGet, kvSet } from '../data/cache';
+import HelpModal from './HelpModal';
 
 interface Props {
   scan: ScanResult;
@@ -39,13 +44,15 @@ interface Props {
   onTab: (t: AppTab) => void;
   onSelect: (symbol: string) => void;
   onRefresh: () => void;
+  theme: ThemeName;
+  onToggleTheme: () => void;
 }
 
 function SourceChip({ source }: { source: ScanResult['source'] }) {
-  if (source === 'okx') {
+  if (source !== 'demo') {
     return (
-      <span className="chip live" title="OKX USDT 永續實時資料">
-        <i className="live-dot" /> LIVE · OKX
+      <span className="chip live" title="Binance USDT 永續實時資料">
+        <i className="live-dot" /> LIVE · Binance
       </span>
     );
   }
@@ -96,14 +103,14 @@ function SortHeader({
 function Row({
   c,
   t,
-  isTop10,
+  top10Rank,
   pinned,
   onTogglePin,
   onClick,
 }: {
   c: CoinLite;
   t?: SignalTimesEntry;
-  isTop10: boolean;
+  top10Rank?: number; // 1-based current strength rank, present only while in the top-10
   pinned: boolean;
   onTogglePin: () => void;
   onClick: () => void;
@@ -135,6 +142,11 @@ function Row({
         </button>
         {c.symbol}
         <span className="quote">/USDT</span>
+        {IGNITION_SHIPPED && c.igniting && (
+          <span className="ign-badge" title="🔥 5分鐘點火 — 而家正喺 5m clock 上面點火(近15分鐘 +≥6% + 成交爆 ≥3×)。呢個係實時 ramp,通常早過 1H 偵測 15-55 分鐘(SKYAI 覆核:5m +6% vs 1H +42%)。Badge 級,通知未開(等 false-positive 量度)。">
+            🔥點火
+          </span>
+        )}
         {c.flushBreakout && (
           <span className="fb-badge" title="縮倉突破 — 回測 lift ×2 訊號進行中">
             ⚡{t?.fb ? <span className="sig-age">{fmtAge(t.fb)}</span> : null}
@@ -150,9 +162,27 @@ function Row({
             現
           </span>
         )}
-        {isTop10 && t?.top10 ? (
-          <span className="age-chip" title="首次進入強度 TOP 10 至今">
-            T10 {fmtAge(t.top10)}
+        {c.virginBreakout && !c.flushBreakout && !c.rebuildBreakout && (
+          <span className="sp-badge" title="處女增倉 — 48h 零 flush 純增倉擴張帶量突破 24h 高（回測 lift ×2.76，EVAA 型），排序參考，非進場訊號">
+            擴
+          </span>
+        )}
+        {c.rebuildBreakout && !c.flushBreakout && (
+          <span className="sp-badge" title="增倉突破 — OI 縮完重建後帶量突破 24h 高（回測 lift ×2.60，CAP 型），排序參考，非進場訊號">
+            增
+          </span>
+        )}
+        {EARLY_PUMP_SHIPPED && c.earlyPump && !c.flushBreakout && !c.rebuildBreakout && !c.virginBreakout && (
+          <span className="sp-badge" title="早期拉盤 — 突破前 markup。仍在 recording-only(對抗式覆核證原 ×1.73 主要係 geometry artifact,真增量 ×1.03-1.10,expectancy ~0),未出 badge/通知。">
+            早
+          </span>
+        )}
+        {top10Rank != null && t?.top10 ? (
+          <span
+            className="age-chip"
+            title="現時強度排名(同分以 24h 量、字母序決定)· 時間 = 連續在強度 TOP 10 內幾耐"
+          >
+            T10 #{top10Rank} · {fmtAge(t.top10)}
           </span>
         ) : null}
       </span>
@@ -169,7 +199,12 @@ function Row({
         </span>
       </span>
       <span className={`ta-r num ${pctSign(c.change1h) >= 0 ? 'up' : 'down'}`}>{fmtPct(c.change1h)}</span>
-      <span className={`ta-r num ${pctSign(c.oi4h, 1) >= 0 ? 'up' : 'down'}`}>{fmtPct(c.oi4h, 1)}</span>
+      <span
+        className={`ta-r num ${c.oiTrusted === false ? 'muted' : pctSign(c.oi4h, 1) >= 0 ? 'up' : 'down'}`}
+        title={c.oiTrusted === false ? 'OI 資料滯後（冷路徑）' : undefined}
+      >
+        {fmtPct(c.oi4h, 1)}
+      </span>
       <span className={`ta-r num ${fundingCls(c.funding)}`}>{fmtPct(c.funding, 3)}</span>
       <span className="ta-r num">{fmtMoney(c.vol24h)}</span>
       <span className="ta-r">
@@ -205,6 +240,8 @@ export default function ScreenerList({
   onTab,
   onSelect,
   onRefresh,
+  theme,
+  onToggleTheme,
 }: Props) {
   // filter (⚡/regime/vol compose with AND) → column sort → pinned-first. One
   // memo so batch updates and sort/filter changes re-order the same way (rows
@@ -218,16 +255,44 @@ export default function ScreenerList({
     const sorted = [...list].sort(
       (a, b) => (a[sortKey] - b[sortKey]) * dir || a.symbol.localeCompare(b.symbol),
     );
+    // pinned first (user's explicit choice), then 🔥 igniting coins floated to the
+    // top so the real-time 點火 badge is actually seen (else a rank-#200 ignition is
+    // invisible, defeating the alert). Igniting is rare (~1-2) so this barely disturbs
+    // the sort, and auto-reverts when nothing's igniting.
+    const unpinned = sorted.filter((c) => !pinned.has(c.symbol));
     return [
       ...sorted.filter((c) => pinned.has(c.symbol)),
-      ...sorted.filter((c) => !pinned.has(c.symbol)),
+      ...(IGNITION_SHIPPED ? unpinned.filter((c) => c.igniting) : []),
+      ...unpinned.filter((c) => !(IGNITION_SHIPPED && c.igniting)),
     ];
   }, [scan.coins, fbOnly, regimeSet, minVol, sortKey, sortDir, pinned]);
-  // top-10 by rank in the full (unfiltered) strength-sorted list
-  const top10 = useMemo(() => new Set(scan.coins.slice(0, 10).map((c) => c.symbol)), [scan.coins]);
+  const ignitingCount = useMemo(
+    () => (IGNITION_SHIPPED ? scan.coins.filter((c) => c.igniting).length : 0),
+    [scan.coins],
+  );
+  // THE top-10 (lib/rank — strength desc, vol24h desc, symbol asc) over the full
+  // unfiltered list. Pre-fix this gated on scan.coins.slice(0,10), which is SCAN
+  // order, not strength order — chips appeared on the wrong coins.
+  const top10 = useMemo(() => top10Ranks(scan.coins), [scan.coins]);
+
+  // U3: help modal + first-run auto-open (once, guarded by the kv 'help-seen' key)
+  const [helpOpen, setHelpOpen] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void kvGet<number>('help-seen').then((seen) => {
+      if (!cancelled && !seen) {
+        setHelpOpen(true);
+        void kvSet('help-seen', Date.now());
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="page">
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       <div className="topbar">
         <div className="brand">
           <BrandMark />
@@ -238,6 +303,24 @@ export default function ScreenerList({
         </div>
         <div className="top-actions">
           <NavTabs tab={tab} onTab={onTab} />
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => setHelpOpen(true)}
+            title="使用說明"
+            aria-label="使用說明"
+          >
+            ?
+          </button>
+          <button
+            type="button"
+            className={`btn ghost${theme === 'y2k' ? ' on' : ''}`}
+            onClick={onToggleTheme}
+            title="🎀 Y2K 主題（純外觀，唔影響任何數據/訊號）"
+            aria-pressed={theme === 'y2k'}
+          >
+            🎀
+          </button>
           <button
             type="button"
             className={`fb-toggle${fbOnly ? ' on' : ''}`}
@@ -276,6 +359,11 @@ export default function ScreenerList({
           <span className="chip num scan-count" style={progress ? undefined : { visibility: 'hidden' }}>
             掃描 {progress ? `${progress.done}/${progress.total}` : '0/0'}
           </span>
+          {ignitingCount > 0 && (
+            <span className="chip ign-chip" title="而家正喺 5m clock 上面點火嘅幣數(近15分鐘 +≥6% + 成交爆 ≥3×)。已置頂,望名單頂就見到 🔥 badge。">
+              🔥 {ignitingCount} 點火
+            </span>
+          )}
           <span className="chip last-chip">上次掃描 {fmtClock(scan.scannedAt)}</span>
           <span className={`chip cont-chip${loading ? ' on' : ''}`} title="一輪掃描完即接下一輪，唔等 15 分鐘">
             <i className="live-dot" /> 連續掃描
@@ -288,7 +376,7 @@ export default function ScreenerList({
 
       {scan.source === 'demo' ? (
         <div className="notice">
-          無法連線 OKX（{loadErr ?? '網路或地區限制'}），目前顯示模擬資料。
+          無法連線 Binance（{loadErr ?? '網路或地區限制'}），目前顯示模擬資料。
         </div>
       ) : loadErr ? (
         <div className="notice">本次更新失敗（{loadErr}），顯示上次成功的資料。</div>
@@ -311,7 +399,7 @@ export default function ScreenerList({
             key={c.symbol}
             c={c}
             t={sigTimes[c.symbol]}
-            isTop10={top10.has(c.symbol)}
+            top10Rank={top10.get(c.symbol)}
             pinned={pinned.has(c.symbol)}
             onTogglePin={() => onTogglePin(c.symbol)}
             onClick={() => onSelect(c.symbol)}
@@ -327,8 +415,8 @@ export default function ScreenerList({
       </div>
 
       <div className="footer">
-        {scan.source === 'okx'
-          ? '資料來源 OKX USDT 永續 · 實時 · 連續掃描（一輪完即接下一輪）· 記錄每 15 分鐘一格'
+        {scan.source !== 'demo'
+          ? '資料來源 Binance USDT 永續 · 實時 · 連續掃描（一輪完即接下一輪）· 記錄每 15 分鐘一格'
           : '資料來源 模擬資料（demo）· 連續掃描'}
         <span className="muted"> · 強度為示範性評分，非投資建議</span>
       </div>

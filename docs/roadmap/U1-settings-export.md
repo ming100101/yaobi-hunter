@@ -39,3 +39,16 @@ R2 已經起咗「設定」tab(`SettingsView.tsx`,通知 section)。呢個 spec 
 - Do NOT put the Telegram token in exports (shareable file).
 - Do NOT add a settings item without a consumer — every control must already do something. Consumer 未 land(例如 M1 未做 → 冇模擬盤 section 好加)就 skip 嗰個 section,喺 results block 註明.
 - Do NOT 重寫 R2 嘅通知 section — 只加新 sections,唔好改佢嘅 endpoints/邏輯.
+
+## Results — ◐ 匯出/匯入備份 section shipped 2026-07-08(/loop autonomous)
+
+做咗**最高價值 + 消費者齊全**嗰 section:**💾 匯出 / 匯入備份**(SettingsView.tsx,R2 `.set-*` pattern,冇改通知 section)。
+- **匯出**:download `yaobi-backup.json` = `{_app,_v,_ts, pinned, notify(**淨 toast+cooldownH,零 token/chatId**), settings, paperCfg}`,Blob URL。
+- **匯入**:file input → validate `_app==='yaobi-hunter'` + pinned array → whitelist kvSet(pinned/settings/paper-state.cfg)→ notify **merge 保留現有 token/chatId**(備份既唔洩密亦唔覆蓋 secret)→ reload。
+- **瀏覽器 verified**:設定 tab 兩個 section 齊;匯出實測含用戶 11 個 pin + notify(toast/cooldownH),**hasTokenLeak=false**(搜唔到 token/telegram/chatid)。typecheck 綠。
+
+**其餘 section 照 陷阱 skip(冇 wired consumer 唔加 control):**
+- **篩選**:screener filter(fbOnly/regimeSet/minVol)係 ScreenerList **local state,冇讀 `settings.screener`** → 加 control 冇 consumer,skip。要先令 ScreenerList 讀 settings.screener 做 default 先可加。
+- **外觀**:theme 已有 🎀 toggle(consumer-backed control),再加 settings 重複,skip。
+- **模擬盤**:paper cfg 有 consumer(drivePaper 讀 state.cfg),但要核實邊啲 field(riskPct/startEquity/enabled)真係被讀 + 加 control,deferred。
+- `settings` kv key + `SERVER_KEYS`:未有 section 寫 settings,所以未加(export 會 gracefully omit)。將來加 篩選/模擬盤 section 時一齊加。

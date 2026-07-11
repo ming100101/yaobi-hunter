@@ -13,7 +13,13 @@
     "eval-rec": "esbuild scripts/eval-recordings.ts --bundle --format=esm --platform=node --outfile=scripts/.build/eval-recordings.mjs --log-level=warning && node scripts/.build/eval-recordings.mjs",
     "test-paper": "esbuild scripts/test-paper.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-paper.mjs --log-level=warning && node scripts/.build/test-paper.mjs",
     "test-strategy": "esbuild scripts/test-strategy.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-strategy.mjs --log-level=warning && node scripts/.build/test-strategy.mjs",
-    "test-signal-log": "esbuild scripts/test-signal-log.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-signal-log.mjs --log-level=warning && node scripts/.build/test-signal-log.mjs"
+    "test-signal-log": "esbuild scripts/test-signal-log.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-signal-log.mjs --log-level=warning && node scripts/.build/test-signal-log.mjs",
+    "ref-log": "esbuild scripts/ref-log.ts --bundle --format=esm --platform=node --outfile=scripts/.build/ref-log.mjs --log-level=warning && node scripts/.build/ref-log.mjs",
+    "ref-eval": "esbuild scripts/ref-eval.ts --bundle --format=esm --platform=node --outfile=scripts/.build/ref-eval.mjs --log-level=warning && node scripts/.build/ref-eval.mjs",
+    "backtest5m": "esbuild scripts/backtest5m.ts --bundle --format=esm --platform=node --outfile=scripts/.build/backtest5m.mjs --log-level=warning && node scripts/.build/backtest5m.mjs",
+    "test-vwap": "esbuild scripts/test-vwap.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-vwap.mjs --log-level=warning && node scripts/.build/test-vwap.mjs",
+    "test-eval-seam": "esbuild scripts/test-eval-seam.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-eval-seam.mjs --log-level=warning && node scripts/.build/test-eval-seam.mjs",
+    "test-regime": "esbuild scripts/test-regime.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-regime.mjs --log-level=warning && node scripts/.build/test-regime.mjs"
   },
   "dependencies": {
     "lightweight-charts": "^5.0.0",

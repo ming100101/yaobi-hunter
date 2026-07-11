@@ -44,7 +44,12 @@ export interface Coin {
   regime: Regime;
   strength: number; // 0-100 composite
   change1h: number; // pct
-  oi4h: number; // pct change over 4h
+  oi4h: number; // pct change over 4h (store-corrected when oiTrusted; else laggy series value)
+  // P1: false ⇒ oi4h came from the laggy cold-path series (no warm/partial-warm
+  // store data) — OI-gated signals fail closed and the UI tags the value 滯後.
+  // Absent (demo/old cache) ⇒ treated as trusted, pre-P1 behaviour.
+  oiTrusted?: boolean;
+  f24h?: number; // R3: funding rate 24h ago (%), same window as interpret buildCtx; recorded idx23
   funding: number; // current rate in %
   volZ: number; // volume z-score
   vol24h: number; // USD
@@ -71,6 +76,10 @@ export interface Coin {
   // chart's higher timeframes; absent in demo/older-cache coins (1h/4h then
   // gracefully fall back to aggregating the 48h 5m base)
   long?: LongSeries;
+  // ~14d of 5m bars for the 5m/15m CHART tabs only (detail fetch, best-effort).
+  // Display depth, NOT detector input: analyze/interpret/recording always read
+  // the 48h base above, so signal reads stay identical to the sweep's.
+  deep?: LongSeries;
 }
 
 // A second, coarser+longer series attached to a detail Coin. Same shape as the
@@ -83,7 +92,15 @@ export interface LongSeries {
   strengthHist: SeriesPoint[];
 }
 
-export type ScanSource = 'okx' | 'demo';
+// 'binance' = live data (since 2026-07-07); 'okx' = legacy live recordings from
+// the OKX era — still readable everywhere, never written anymore. UI/eval code
+// should test `!== 'demo'` for "is live", not a specific exchange literal.
+export type ScanSource = 'binance' | 'okx' | 'demo';
+
+// F1: visual theme. 'y2k' is the 🎀 pastel pixel skin — pure token overrides in
+// theme.css, persisted under kv 'theme'; charts re-read colors via a
+// theme-keyed remount.
+export type ThemeName = 'dark' | 'y2k';
 
 // Notification config (persisted under kv key 'notify'; edited in the 設定 tab,
 // read by the headless recorder). Telegram + Windows toast on rising-edge ⚡.
@@ -102,6 +119,27 @@ export interface SignalTimesEntry {
   ea?: number; // 蓄 早期蓄力 first fired
 }
 export type SignalTimes = Record<string, SignalTimesEntry>;
+
+// E4: one logged reference signal from the 老詹抓妖 channel (manual entry —
+// Telegram is protected, no API under the free constraint). The logbook is
+// hypothesis fuel for E5/S7 and an audit trail of 老詹's own hit rate; it is
+// NEVER a tuning/validation set (anti-overfit protocol, S7 spec).
+export interface RefSignal {
+  ts: number; // ms epoch of the source MESSAGE (anchor-provenance rule: forward
+  // returns anchor to the recordings slot at this ts, never a nearby print)
+  tsProvisional?: boolean; // true until the user confirms the real publish time
+  src: string; // 'laozhan' (老詹抓妖)
+  sym: string;
+  side: 'LONG' | 'SHORT';
+  kind: string; // 上車準備 | 蓄力加倉 | ...
+  refStrength: number; // 老詹's 強度 score
+  px: number; // price printed in the message
+  tpPcts?: number[]; // TP ladder in % (e.g. [10, 25, 50])
+  slPct?: number; // hard SL in % (e.g. -15)
+  exits?: number[]; // scale-out fractions (e.g. [0.3, 0.3, 0.35], remainder = moonbag)
+  refHitRate?: { alerts: number; wins: number; bestPct: number; windowDays: number }; // his self-reported 歷史 footer
+  notes?: string;
+}
 
 // 早期蓄力 watchlist confirmation numbers (see lib/analyze.ts for thresholds
 // and the backtest evidence behind them)
@@ -133,6 +171,8 @@ export interface CoinLite {
   change1h: number;
   change24h: number;
   oi4h: number;
+  oiTrusted?: boolean; // P1: see Coin.oiTrusted — false ⇒ laggy value, gates fail closed
+  f24h?: number | null; // R3: funding 24h ago (%) for recording idx23; null/absent on demo/old cache
   funding: number;
   volZ: number;
   vol24h: number;
@@ -142,10 +182,14 @@ export interface CoinLite {
   flushBreakout: boolean; // backtested 縮倉突破 trigger is live on this coin
   earlyAccum: boolean; // 早期蓄力 watchlist flag
   spotPump?: boolean; // S2 現貨帶動 (spot-led-pump, backtest lift ×1.79); only on candidate coins with spot data
+  rebuildBreakout?: boolean; // S9 增倉突破 (rebuild-R1, backtest lift ×2.60); absent on demo/old cache
+  virginBreakout?: boolean; // S13 處女增倉 (virgin-V2, backtest lift ×2.76); absent on demo/old cache
+  earlyPump?: boolean; // S14 早期拉盤 (pre-breakout markup, backtest lift ×1.73, ~6.5h earlier than ⚡); badge only, NOT notify (E1/E2 gate that); absent on demo/old cache
+  igniting?: boolean; // 5m 點火 (2026-07-09) — real-time ignition ramp on the 5m clock; catches pumps 15-55 min earlier than 1H detectors; badge on, notify gated pending FP; absent on demo/old cache
   riskFlags: string[];
   signals: Signals;
   // recording-v2 feature vector + EA confirmation numbers; optional so demo
-  // coins and older cached scans still typecheck. Set by okx.toLite on live
+  // coins and older cached scans still typecheck. Set by binance.toLite on live
   // scans; consumed by lib/recording.buildScanRecord. Spot fields (S1) land later.
   feat?: RecFeatures & {
     lsDropPct?: number | null;
@@ -168,7 +212,7 @@ export type ScreenerSortDir = 'asc' | 'desc';
 
 // a row in the search tab — any listed USDT perp, not just scanned coins
 export interface SearchHit {
-  instId: string;
+  instId: string; // raw Binance symbol (may carry a 1000×/1M× prefix); base is the app-wide identity
   base: string;
   last: number;
   change24h: number; // pct

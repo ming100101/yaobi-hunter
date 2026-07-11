@@ -4,11 +4,18 @@ import { F, SLOT_MS, risingEdges, type EdgeEvent, type RecIndex } from './evalCo
 // Daily-strategy report over recorded sweeps (M3, amended 2026-07-04).
 //
 // Two strategies — ⚡ 縮倉突破 (row FB=1) and 強度≥70 crossing — each simulated
-// LONG and SHORT INDEPENDENTLY as a 20x-leverage isolated-margin position:
-//   TP1  幣價 ±5%  → ROI +100% on the half closed  (出本金:平一半倉)
-//   TP2  幣價 ±10% → ROI +200% on the quarter closed(平餘下嘅一半)
-//   SL   幣價 ∓5%  → ROI −100% on whatever remains  (爆倉式清零)
-//   runner (last 25%) rides to the day's close (or is marked live for today).
+// LONG and SHORT INDEPENDENTLY as a 20x-leverage isolated-margin position.
+// Two exit modes (StratMode, user-requested comparison 2026-07-06):
+//   'ladder' (default, the original M3 scheme):
+//     TP1  幣價 ±5%  → ROI +100% on the half closed  (出本金:平一半倉)
+//     TP2  幣價 ±10% → ROI +200% on the quarter closed(平餘下嘅一半)
+//     SL   幣價 ∓5%  → ROI −100% on whatever remains  (爆倉式清零)
+//     runner (last 25%) rides to the day's close (or is marked live for today).
+//   'allout':
+//     單一 TP 幣價 ±10% → +200% margin, close EVERYTHING(全出);
+//     SL 幣價 ∓5% → −100%(20x 爆倉式清零);runner-less — whatever survives
+//     rides to EOD. Entry is the coin's FIRST signal of the day only(首訊號
+//     即係開倉時點)— no re-entry after SL, unlike ladder mode.
 // Long and short share TP/SL PARAMETERS but each walks the real 15-min price
 // path, so their results are genuinely asymmetric (not a −1 mirror). Fills use
 // the trigger LEVEL price; SL wins ties (conservative, we only see 15-min
@@ -16,8 +23,9 @@ import { F, SLOT_MS, risingEdges, type EdgeEvent, type RecIndex } from './evalCo
 // (+1.0 = +100% of the bet's margin).
 //
 // Entry uses M1's position discipline: one live position per (strategy, side,
-// coin) — a new rising edge while a runner is still open is ignored; only after
-// a full SL close can the same coin re-enter that day. Two guards on top:
+// coin) — a new rising edge while a runner is still open is ignored; in ladder
+// mode a full SL close frees the coin for same-day re-entry, in allout mode it
+// never does. Two guards on top:
 //   • gap guard  — an edge counts only if the immediately-prior 15-min slot was
 //                  recorded (after a recorder gap we can't trust the off→on).
 //   • stablecoins are excluded (USDC etc. — flat, pure noise).
@@ -36,7 +44,8 @@ export const STABLE_BASES = new Set([
   'USDC', 'FDUSD', 'TUSD', 'DAI', 'USDE', 'USDP', 'PYUSD', 'BUSD', 'USDD', 'GUSD', 'EURT',
 ]);
 
-export type FillKind = 'tp1' | 'tp2' | 'sl' | 'eod' | 'mark';
+export type StratMode = 'ladder' | 'allout';
+export type FillKind = 'tp1' | 'tp2' | 'allout' | 'sl' | 'eod' | 'mark';
 export interface Fill {
   kind: FillKind;
   ts: number;
@@ -86,6 +95,7 @@ function walkTrade(
   side: 'long' | 'short',
   dayEndSlot: number,
   final: boolean,
+  mode: StratMode,
 ): StratTrade | null {
   if (!pm || !(entry > 0)) return null;
   const sign = side === 'long' ? 1 : -1;
@@ -108,6 +118,15 @@ function walkTrade(
       fills.push({ kind: 'sl', ts, px: entry * (1 - sign * SL), roi: LEV * -SL * rem });
       rem = 0;
       break; // full stop, position flat
+    }
+    if (mode === 'allout') {
+      // single all-out exit at the TP2 level: ±10% coin = +200% margin at 20x
+      if (fav >= TP2 - EPS) {
+        fills.push({ kind: 'allout', ts, px: entry * (1 + sign * TP2), roi: LEV * TP2 * rem });
+        rem = 0;
+        break;
+      }
+      continue;
     }
     if (!tp1 && fav >= TP1 - EPS) {
       const cf = TP_CLOSE * rem;
@@ -140,14 +159,16 @@ function walkTrade(
 }
 
 // Simulate one side (long/short) over a pre-filtered, slot-ascending edge stream.
-// M1 position rule: one live position per (day, coin); a runner blocks re-entry
-// until a full SL close frees the coin (busyUntil = SL slot; a TP'd runner rides
-// to EOD → busyUntil = Infinity, no same-day re-entry).
+// M1 position rule: one live position per (day, coin); in ladder mode a runner
+// blocks re-entry until a full SL close frees the coin (busyUntil = SL slot; a
+// TP'd runner rides to EOD → busyUntil = Infinity). In allout mode the FIRST
+// signal is the trade — busyUntil is always Infinity, no same-day re-entry.
 function simulateSide(
   edges: EdgeEvent[],
   side: 'long' | 'short',
   idx: RecIndex,
   todayStart: number,
+  mode: StratMode,
 ): Map<number, { trades: StratTrade[]; skipped: number }> {
   const byDay = new Map<number, { trades: StratTrade[]; skipped: number }>();
   const busyUntil = new Map<string, number>(); // `${day}|${sym}` -> slot busy through
@@ -161,7 +182,7 @@ function simulateSide(
       byDay.set(day, bucket);
     }
     const dayEndSlot = (day + DAY_MS) / SLOT_MS;
-    const t = walkTrade(idx.priceAt.get(e.sym), e.slot, e.price, side, dayEndSlot, day !== todayStart);
+    const t = walkTrade(idx.priceAt.get(e.sym), e.slot, e.price, side, dayEndSlot, day !== todayStart, mode);
     if (!t) {
       bucket.skipped++;
       continue;
@@ -169,14 +190,14 @@ function simulateSide(
     t.sym = e.sym;
     bucket.trades.push(t);
     const sl = t.fills.find((f) => f.kind === 'sl');
-    busyUntil.set(key, sl ? sl.ts / SLOT_MS : Infinity);
+    busyUntil.set(key, mode === 'allout' ? Infinity : sl ? sl.ts / SLOT_MS : Infinity);
   }
   return byDay;
 }
 
 // Newest → oldest, only days that actually have edges, capped at `days`. Today is
 // marked `final: false`. Long and short are independent simulations.
-export function buildDailyReport(idx: RecIndex, days: number, nowMs: number): StratDay[] {
+export function buildDailyReport(idx: RecIndex, days: number, nowMs: number, mode: StratMode = 'ladder'): StratDay[] {
   const todayStart = dayStartOf(nowMs);
   const slotSet = new Set(idx.slots);
   const prep = (edges: EdgeEvent[]) =>
@@ -184,10 +205,10 @@ export function buildDailyReport(idx: RecIndex, days: number, nowMs: number): St
 
   const fbEdges = prep(risingEdges(idx, (r: RecCoin) => r[F.FB] === 1));
   const s70Edges = prep(risingEdges(idx, (r: RecCoin) => (r[F.STR] as number) >= 70));
-  const fbL = simulateSide(fbEdges, 'long', idx, todayStart);
-  const fbS = simulateSide(fbEdges, 'short', idx, todayStart);
-  const sL = simulateSide(s70Edges, 'long', idx, todayStart);
-  const sS = simulateSide(s70Edges, 'short', idx, todayStart);
+  const fbL = simulateSide(fbEdges, 'long', idx, todayStart, mode);
+  const fbS = simulateSide(fbEdges, 'short', idx, todayStart, mode);
+  const sL = simulateSide(s70Edges, 'long', idx, todayStart, mode);
+  const sS = simulateSide(s70Edges, 'short', idx, todayStart, mode);
 
   const bucket = (m: Map<number, { trades: StratTrade[]; skipped: number }>, day: number) =>
     m.get(day) ?? { trades: [], skipped: 0 };

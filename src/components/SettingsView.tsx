@@ -95,6 +95,66 @@ export default function SettingsView({ tab, onTab }: Props) {
     setBusy(null);
   };
 
+  // U1: export/import backup of the config-like kv keys (the port-bug data-loss
+  // insurance). Telegram token/chatId are NEVER written to the file, and on import
+  // the existing token/chatId are preserved (a backup can't leak or wipe secrets).
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+
+  const exportBackup = async () => {
+    const [pinned, notify, settings, paper] = await Promise.all([
+      kvGet<string[]>('pinned'),
+      kvGet<NotifyCfg>('notify'),
+      kvGet<unknown>('settings'),
+      kvGet<{ cfg?: unknown }>('paper-state'),
+    ]);
+    const backup = {
+      _app: 'yaobi-hunter',
+      _v: 1,
+      _ts: Date.now(),
+      pinned: pinned ?? [],
+      // token + chatId stripped — shareable file must never carry secrets
+      notify: notify ? { toast: notify.toast, cooldownH: notify.cooldownH } : undefined,
+      settings: settings ?? undefined,
+      paperCfg: paper?.cfg ?? undefined,
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'yaobi-backup.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importBackup = async (file: File) => {
+    setImportMsg(null);
+    try {
+      const b = JSON.parse(await file.text());
+      if (b?._app !== 'yaobi-hunter' || !Array.isArray(b.pinned)) {
+        setImportMsg('唔係有效嘅 yaobi 備份檔');
+        return;
+      }
+      await kvSet('pinned', b.pinned.filter((x: unknown) => typeof x === 'string'));
+      if (b.settings && typeof b.settings === 'object') await kvSet('settings', b.settings);
+      if (b.notify && typeof b.notify === 'object') {
+        const existing = (await kvGet<NotifyCfg>('notify')) ?? DEFAULT;
+        // preserve the live token/chatId; only merge the non-secret fields
+        await kvSet('notify', {
+          ...existing,
+          toast: b.notify.toast !== false,
+          cooldownH: Number.isFinite(Number(b.notify.cooldownH)) ? Number(b.notify.cooldownH) : existing.cooldownH,
+        });
+      }
+      if (b.paperCfg && typeof b.paperCfg === 'object') {
+        const ps = (await kvGet<Record<string, unknown>>('paper-state')) ?? {};
+        await kvSet('paper-state', { ...ps, cfg: b.paperCfg });
+      }
+      setImportMsg('已匯入 ✓ 重新載入中…');
+      setTimeout(() => location.reload(), 700);
+    } catch {
+      setImportMsg('匯入失敗:檔案格式錯誤');
+    }
+  };
+
   const tokenSet = cfg.telegramToken.trim().length > 0;
   const chatSet = cfg.telegramChatId.trim().length > 0;
 
@@ -105,7 +165,7 @@ export default function SettingsView({ tab, onTab }: Props) {
           <BrandMark />
           <div>
             <div className="brand-name">妖幣獵手</div>
-            <div className="brand-sub">設定 · 通知</div>
+            <div className="brand-sub">設定 · 通知 · 備份</div>
           </div>
         </div>
         <NavTabs tab={tab} onTab={onTab} />
@@ -251,6 +311,37 @@ export default function SettingsView({ tab, onTab }: Props) {
 
         <div className="set-note">
           通知只喺 headless recorder(或 app / exe)運行時發出。設定 → README「24/7 收集」教你點樣開機自動行。
+        </div>
+      </div>
+
+      <div className="card set-section">
+        <div className="set-head">
+          <span className="set-title">💾 匯出 / 匯入備份</span>
+          <span className="set-sub">
+            備份置頂清單、通知設定、模擬盤參數 —— port 漂移或重裝時唔使由頭嚟過
+          </span>
+        </div>
+        <div className="set-actions">
+          <button type="button" className="btn" onClick={exportBackup}>
+            匯出備份
+          </button>
+          <label className="btn ghost">
+            匯入備份
+            <input
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void importBackup(f);
+                e.target.value = ''; // allow re-importing the same file
+              }}
+            />
+          </label>
+        </div>
+        {importMsg && <div className="set-hint">{importMsg}</div>}
+        <div className="set-note">
+          備份檔<b>唔會</b>包含 Telegram token / chat ID(可以安心分享);匯入亦唔會覆蓋你而家嘅 token。
         </div>
       </div>
     </div>

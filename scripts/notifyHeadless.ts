@@ -1,6 +1,10 @@
 import { execFile } from 'node:child_process';
 import { readKvFile, writeKvKey } from './kvFile';
-import type { CoinLite, NotifyCfg } from '../src/types';
+import { appendRecordLine } from './recordFile';
+import { renderCandlePng } from './chartPng';
+import { fmtPct, fmtPrice } from '../src/lib/format';
+import type { Candle, CoinLite, ExitPlan, NotifyCfg } from '../src/types';
+import type { Insight } from '../src/lib/interpret';
 
 // Notification I/O for the headless recorder AND the dev/exe server's setup
 // endpoints. Everything runs in Node (Telegram fetch + Windows toast via
@@ -8,6 +12,16 @@ import type { CoinLite, NotifyCfg } from '../src/types';
 // path. Config lives in kv.json under 'notify' (edited in the 設定 tab).
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// R4: per-coin payload for the rich signal card, captured from the FULL Coin
+// before toLite strips the series. insights = interpret(coin) output — the
+// exact objects the detail page renders, so card numbers can never drift from
+// the app (the lift figures below are regex-lifted out of those same strings).
+export interface NotifyRich {
+  candles: Candle[];
+  plan: ExitPlan;
+  insights: Insight[];
+}
 
 export interface Channel {
   ok: boolean;
@@ -32,6 +46,117 @@ export async function sendTelegram(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// R4: photo card via multipart sendPhoto (photo ≤10MB, caption ≤1024 chars).
+// Node ≥18 globals only (FormData/Blob ride the same undici as fetch above).
+export async function sendTelegramPhoto(
+  token: string | undefined,
+  chatId: string | undefined,
+  png: Buffer,
+  caption: string,
+): Promise<Channel> {
+  if (!token || !chatId) return { ok: false, error: 'missing token or chat id' };
+  try {
+    const fd = new FormData();
+    fd.append('chat_id', chatId);
+    fd.append('caption', caption);
+    fd.append('parse_mode', 'HTML');
+    fd.append('photo', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'chart.png');
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: 'POST',
+      body: fd,
+    });
+    const j: any = await res.json().catch(() => ({}));
+    if (!res.ok || j.ok === false) return { ok: false, error: j.description || `http ${res.status}` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// zh labels mirrored from the UI (CoinDetail ENTRY_KIND_LABEL / RegimeTag
+// REGIME_META) — not imported: those live in .tsx and would drag React into
+// the recorder bundle. Keep in sync if the UI wording ever changes.
+const ENTRY_KIND_LABEL: Record<ExitPlan['kind'], string> = {
+  breakout: '突破位',
+  pullback: '回調位',
+  reclaim: '收復位',
+};
+const REGIME_LABEL: Record<CoinLite['regime'], string> = {
+  accumulate: '蓄力',
+  pump: '拉升',
+  distribute: '出貨',
+};
+
+// The other SHIPPED reads eligible for the card's 同時亮 line. R4 upgrades card
+// CONTENT only — the notify trigger stays ⚡-only; adding a read to the trigger
+// set is an E2 promote/demote decision, never a card tweak.
+const CARD_EXTRA_IDS = new Set(['squeeze-breakout', 'boarding-reclaim', 'spot-led-pump']);
+
+// R4/S9: notification class descriptor — which flag triggers, what the card
+// header says, which cooldown key isolates it. ⚡ stays the hardcoded default
+// everywhere so R2/R4 behaviour is untouched; S9 增倉突破 is the second class
+// (gate-passed 2026-07-06, user decision: gate-passers notify).
+export interface NotifyClass {
+  cdKey: string; // kv cooldown map key
+  title: string; // card/toast header, e.g. '⚡ 縮倉突破'
+  tail: string; // the closing lift/caveat line
+  fires: (c: CoinLite) => boolean;
+}
+export const CLASS_FB: NotifyClass = {
+  cdKey: 'fb-notified-headless',
+  title: '⚡ 縮倉突破',
+  tail: '回測 lift ×2 訊號,僅供參考',
+  fires: (c) => c.flushBreakout,
+};
+export const CLASS_REBUILD: NotifyClass = {
+  cdKey: 'rb-notified-headless',
+  title: '📈 增倉突破',
+  tail: '回測 lift ×2.6 訊號(期望值薄,出場紀律行先),僅供參考',
+  fires: (c) => c.rebuildBreakout === true,
+};
+export const CLASS_VIRGIN: NotifyClass = {
+  cdKey: 'vg-notified-headless',
+  title: '🚀 處女增倉',
+  tail: '回測 lift ×2.76 訊號(期望值薄,出場紀律行先),僅供參考',
+  fires: (c) => c.virginBreakout === true,
+};
+
+// 老詹-style card caption. All live numbers come from the same CoinLite /
+// ExitPlan / Insight objects the app renders — nothing is recomputed here.
+// Caption cap is 1024: optional lines are dropped lowest-priority-first until
+// it fits; the title and TP/SL lines always survive.
+export function buildSignalCard(c: CoinLite, rich: NotifyRich, klass: NotifyClass = CLASS_FB): string {
+  const { plan } = rich;
+  // same math as CoinDetail's pctFromEntry
+  const pctFromEntry = (x: number) => fmtPct((x / plan.entry - 1) * 100, 1);
+  const extras = rich.insights
+    .filter((i) => CARD_EXTRA_IDS.has(i.id))
+    .map((i) => {
+      const m = i.detail.match(/×(\d+(?:\.\d+)?)/); // lift as printed on the detail page
+      return m ? `${i.title} ×${m[1]}` : i.title;
+    });
+  const oiTag = c.oiTrusted === false ? '(滯後)' : '';
+
+  // [dropRank, line] in display order; rank 0 = never dropped, higher = cut first
+  const lines: Array<[number, string]> = [
+    [0, `${klass.title} — <b>${esc(c.symbol)}</b>/USDT · 強度 ${c.strength} · ${REGIME_LABEL[c.regime]}`],
+    [0, `價 ${fmtPrice(c.lastPrice)} · 進場 ${fmtPrice(plan.entry)}(${ENTRY_KIND_LABEL[plan.kind]})`],
+    [0, `TP1 ${fmtPrice(plan.tp1)}(${pctFromEntry(plan.tp1)}) · TP2 ${fmtPrice(plan.tp2)}(${pctFromEntry(plan.tp2)}) · TP3 ${fmtPrice(plan.tp3)}(${pctFromEntry(plan.tp3)})`],
+    [0, `硬SL ${fmtPrice(plan.sl)}(${pctFromEntry(plan.sl)}) · Runner ${plan.runnerPct}%`],
+    // B ladder footnote mirrors lib/paper LADDERS.B (M4 comparison arm, not the default)
+    [2, `B梯對照:+10/+25/+50 · SL −15 · 出30/30/35留5%尾倉 · TP1後SL保本`],
+    [3, extras.length ? `同時亮:${extras.map(esc).join(' · ')}` : ''],
+    [2, `OI4h ${fmtPct(c.oi4h, 1)}${oiTag} · 費率 ${fmtPct(c.funding, 3)} · 量Z ${c.volZ.toFixed(1)} · 1h ${fmtPct(c.change1h, 2)}`],
+    [1, c.riskFlags.length ? `⚠ 風險:${c.riskFlags.map(esc).join(' · ')}` : ''],
+    [0, klass.tail],
+  ];
+  let kept = lines.filter(([, s]) => s);
+  for (let rank = 3; rank >= 1 && kept.map(([, s]) => s).join('\n').length > 1024; rank--) {
+    kept = kept.filter(([r]) => r !== rank);
+  }
+  return kept.map(([, s]) => s).join('\n');
 }
 
 // WinRT toast via PowerShell — no module install. AppId piggybacks on
@@ -85,43 +210,102 @@ export async function detectChatId(
   }
 }
 
-const CD_KEY = 'fb-notified-headless';
-
-// Rising-edge ⚡ notifier for the recorder loop. prevFb = last sweep's ⚡ set;
-// returns the current one to thread through. Per-coin cooldown persisted in
-// kv.json (separate key from the browser's, so both can run without racing).
-export async function notifyFlushBreakouts(
+// Rising-edge notifier for one signal class. prev = last sweep's fired set for
+// THIS class; returns the current one to thread through. Per-coin cooldown
+// persisted in kv.json under the class's own key (⚡ keeps its original key, so
+// R2-era state carries over; classes never suppress each other).
+// R4: when the caller supplies a rich payload for a coin, Telegram gets the
+// photo card (chart PNG + caption); ANY failure in that chain falls back to a
+// plain sendMessage — the notification never dies because of the picture.
+export async function notifyClassEdges(
   coins: CoinLite[],
-  prevFb: Set<string>,
+  prev: Set<string>,
+  rich: Map<string, NotifyRich> | undefined,
+  klass: NotifyClass,
 ): Promise<Set<string>> {
   const kv = readKvFile();
   const cfg = (kv['notify'] ?? {}) as Partial<NotifyCfg>;
   const cooldownMs = (cfg.cooldownH ?? 6) * 3600_000;
-  const notified = (kv[CD_KEY] ?? {}) as Record<string, number>;
+  const notified = (kv[klass.cdKey] ?? {}) as Record<string, number>;
   const now = Date.now();
   const curFb = new Set<string>();
   let changed = false;
   for (const c of coins) {
-    if (!c.flushBreakout) continue;
+    if (!klass.fires(c)) continue;
     curFb.add(c.symbol);
-    if (prevFb.has(c.symbol)) continue; // not a rising edge
+    if (prev.has(c.symbol)) continue; // not a rising edge
     if (now - (notified[c.symbol] ?? 0) < cooldownMs) continue;
     notified[c.symbol] = now;
     changed = true;
-    const text =
-      `⚡ 縮倉突破 — <b>${esc(c.symbol)}</b>/USDT\n` +
-      `強度 ${c.strength} · 1h ${c.change1h.toFixed(2)}% · 價 ${c.lastPrice}\n` +
-      `回測 lift ×2 訊號,僅供參考`;
-    await sendTelegram(cfg.telegramToken, cfg.telegramChatId, text);
+    let sent = false;
+    let via: 'photo' | 'text' = 'text';
+    const r = rich?.get(c.symbol);
+    if (r) {
+      try {
+        const caption = buildSignalCard(c, r, klass);
+        try {
+          const png = renderCandlePng(r.candles, { entry: r.plan.entry });
+          sent = (await sendTelegramPhoto(cfg.telegramToken, cfg.telegramChatId, png, caption)).ok;
+          if (sent) via = 'photo';
+        } catch {
+          // render threw — caption still carries the full card as text
+        }
+        if (!sent) {
+          sent = (await sendTelegram(cfg.telegramToken, cfg.telegramChatId, caption)).ok;
+          if (sent) via = 'text';
+        }
+      } catch {
+        // card build threw — legacy short text below
+      }
+    }
+    if (!sent) {
+      const text =
+        `${klass.title} — <b>${esc(c.symbol)}</b>/USDT\n` +
+        `強度 ${c.strength} · 1h ${c.change1h.toFixed(2)}% · 價 ${c.lastPrice}\n` +
+        klass.tail;
+      sent = (await sendTelegram(cfg.telegramToken, cfg.telegramChatId, text)).ok;
+      if (sent) via = 'text';
+    }
     if (cfg.toast !== false) {
-      await sendToast(`⚡ 縮倉突破 — ${c.symbol}/USDT`, `強度 ${c.strength} · 1h ${c.change1h.toFixed(2)}%`);
+      await sendToast(`${klass.title} — ${c.symbol}/USDT`, `強度 ${c.strength} · 1h ${c.change1h.toFixed(2)}%`);
+    }
+    // notify log: only successful Telegram delivery belongs in the push monitor.
+    // 訊號日誌 can show every card 1:1 (recordings-derived edges miss micro-scan
+    // fires and non-RecCoin classes like 增倉突破). Own JSONL line type; every
+    // reader skips it via `type`. Best-effort — logging must never kill notify.
+    try {
+      if (!sent) continue;
+      appendRecordLine(
+        JSON.stringify({
+          type: 'notify',
+          v: 1,
+          ts: now,
+          sym: c.symbol,
+          cls: klass.cdKey.split('-')[0], // 'fb' | 'rb' | future classes
+          px: c.lastPrice,
+          strength: c.strength,
+          via,
+          delivered: true,
+        }),
+      );
+    } catch {
+      /* recordings dir unavailable (browser-side import path) — skip */
     }
   }
   if (changed) {
     // prune coins past their cooldown — they no longer suppress a re-notify, so
     // dropping them keeps this map bounded instead of growing once per coin forever.
     for (const s in notified) if (now - notified[s] >= cooldownMs) delete notified[s];
-    writeKvKey(CD_KEY, notified);
+    writeKvKey(klass.cdKey, notified);
   }
   return curFb;
+}
+
+// Back-compat ⚡ wrapper — same key, same copy, same behaviour as pre-S9.
+export function notifyFlushBreakouts(
+  coins: CoinLite[],
+  prevFb: Set<string>,
+  rich?: Map<string, NotifyRich>,
+): Promise<Set<string>> {
+  return notifyClassEdges(coins, prevFb, rich, CLASS_FB);
 }

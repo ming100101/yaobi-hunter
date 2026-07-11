@@ -21,7 +21,7 @@ function demoHits(coins: CoinLite[], q: string): SearchHit[] {
   return coins
     .filter((c) => !Q || c.symbol.includes(Q))
     .map((c) => ({
-      instId: `${c.symbol}-USDT-SWAP`,
+      instId: c.symbol, // row key only — demo rows never resolve a real perp
       base: c.symbol,
       last: c.lastPrice,
       change24h: c.change24h,
@@ -55,7 +55,7 @@ export default function SearchBar({
   }, []);
 
   useEffect(() => {
-    if (source !== 'okx') {
+    if (source === 'demo') {
       setHits(demoHits(scanCoins, query));
       return;
     }
@@ -92,7 +92,7 @@ export default function SearchBar({
           onKeyDown={(e) => {
             if (e.key === 'Escape') onClose();
           }}
-          placeholder={source === 'okx' ? '搜尋任何 OKX USDT 永續,如 TRUMP、PENGU、DOGE…' : '搜尋掃描列表…'}
+          placeholder={source !== 'demo' ? '搜尋任何 Binance USDT 永續,如 TRUMP、PENGU、DOGE…' : '搜尋掃描列表…'}
           spellCheck={false}
           autoComplete="off"
         />
@@ -149,7 +149,7 @@ export default function SearchBar({
         </div>
 
         <div className="search-pop-foot muted">
-          {source === 'okx' ? 'OKX 全部 USDT 永續 · 點擊即時拉取分析 · Esc 關閉' : 'DEMO 模式 · 僅搜尋掃描列表 · Esc 關閉'}
+          {source !== 'demo' ? 'Binance 全部 USDT 永續 · 點擊即時拉取分析 · Esc 關閉' : 'DEMO 模式 · 僅搜尋掃描列表 · Esc 關閉'}
         </div>
       </div>
     </div>

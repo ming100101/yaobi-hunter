@@ -1,14 +1,11 @@
 import type { Coin, CoinLite, ScanProgress, ScanSource, SearchHit } from '../types';
-import { fetchLiveCoin, runRollingScan, searchInstruments, toLite } from './okx';
+import { BN_PROXY, fetchLiveCoin, getBtcRegime, runRollingScan, searchInstruments, toLite } from './binance';
 import { runMicroCycle, type MicroResult } from '../lib/microScan';
-import { getBinancePerpBases } from './binanceUniverse';
 import { generateScan } from './mockData';
 import { loadFullCoin, saveFullCoin } from './cache';
 
-// Vite dev server and the packaged exe both proxy these prefixes
-// (see vite.config.ts and scripts/server.cjs)
-const OKX_BASE = '/okx';
-const BNV_BASE = '/bnv';
+// Vite dev server and the packaged exe both proxy the /bnf (fapi) and /bns
+// (spot) prefixes in BN_PROXY (see vite.config.ts and scripts/server.cjs)
 
 const MEM_FULL_CAP = 12;
 
@@ -28,18 +25,23 @@ function rememberFull(coin: Coin, at: number) {
 }
 
 export function searchPerps(query: string): Promise<SearchHit[]> {
-  return searchInstruments(OKX_BASE, query);
+  return searchInstruments(BN_PROXY, query);
 }
 
-// S3 browser micro-scan cycle — wraps runMicroCycle with the proxy base so App
-// never touches OKX_BASE directly. Warm-only, so it's safe to run every ~75s.
+// E3: BTC regime for the browser writer's sweep-meta tag (proxy host, 15min-cached)
+export function fetchBtcRegime() {
+  return getBtcRegime(BN_PROXY);
+}
+
+// S3 browser micro-scan cycle — wraps runMicroCycle with the proxy bases so App
+// never touches BN_PROXY directly. Warm-only, so it's safe to run every ~75s.
 export function runMicroScan(
   candidates: string[],
   curFb: Set<string>,
   onFire: (c: Coin) => void,
   nowMs: number,
 ): Promise<MicroResult> {
-  return runMicroCycle(OKX_BASE, candidates, curFb, onFire, nowMs);
+  return runMicroCycle(BN_PROXY, candidates, curFb, onFire, nowMs);
 }
 
 export interface ScanHandle {
@@ -47,10 +49,10 @@ export interface ScanHandle {
   abort: () => void;
 }
 
-// Rolling full-market scan (every OKX USDT perp that is also Binance-listed).
-// Emits progressively-growing lite results via onUpdate; on total failure
-// falls back to a synthetic demo scan. `priority` symbols are scanned first,
-// and their full series are cached for instant detail opens.
+// Rolling full-market scan (every tradeable Binance USDT perp). Emits
+// progressively-growing lite results via onUpdate; on total failure falls back
+// to a synthetic demo scan. `priority` symbols are scanned first, and their
+// full series are cached for instant detail opens.
 export function startScan(
   nowMs: number,
   nonce: number,
@@ -62,9 +64,8 @@ export function startScan(
 
   const promise = (async (): Promise<{ error?: string }> => {
     try {
-      const bnBases = await getBinancePerpBases(BNV_BASE);
       const collected: CoinLite[] = [];
-      await runRollingScan(OKX_BASE, nowMs, bnBases, priority, (batch, progress) => {
+      await runRollingScan(BN_PROXY, nowMs, priority, (batch, progress) => {
         if (aborted) return false;
         const at = Date.now();
         for (const coin of batch) {
@@ -72,7 +73,7 @@ export function startScan(
           // keep fulls for recently-viewed coins — likely to be opened again
           if (prioritySet.has(coin.symbol)) rememberFull(coin, at);
         }
-        onUpdate([...collected], progress, 'okx');
+        onUpdate([...collected], progress, 'binance');
         return true;
       });
       if (aborted) return {};
@@ -114,11 +115,7 @@ export async function fetchFullCoin(symbol: string, source: ScanSource): Promise
     if (c) return c;
     throw new Error(`demo 資料中沒有 ${symbol}`);
   }
-  const coin = await fetchLiveCoin(
-    OKX_BASE,
-    { instId: `${symbol}-USDT-SWAP`, base: symbol, last: 0, change24h: 0, vol24hUsd: 0 },
-    Date.now(),
-  );
+  const coin = await fetchLiveCoin(BN_PROXY, symbol, Date.now());
   rememberFull(coin, Date.now());
   return coin;
 }

@@ -12,16 +12,32 @@ import type { CoinLite } from '../types';
 // signal time), NOT the structural plan entry, so the sim is honest about what a
 // market order at ⚡ time would actually get.
 
-// TP/SL multipliers mirror analyze()'s ExitPlan (src/lib/analyze.ts) but are
-// re-applied to the mark-based entry rather than the structural anchor.
-const TP1_MULT = 1.04;
-const TP2_MULT = 1.08;
-const TP3_MULT = 1.15;
-const SL_MULT = 0.97;
-// scale-out sizing: TP1 sheds half the original size, TP2 sheds another 0.3;
-// TP3 / SL / timeout close whatever remains.
-const TP1_FRAC = 0.5;
-const TP2_FRAC = 0.3;
+// M4: exit-ladder arms over the SAME entry signals — the comparison is the
+// exit philosophy, never the entries. A = the original shallow ladder (mirrors
+// analyze()'s ExitPlan); B = the 老詹 ladder (+10/+25/+50, hard SL −15, scale
+// out 30/30/35, 5% moonbag rides until SL/timeout, timeout ×2 for the wide
+// targets); C = the 老詹試用群 2026-07-06 full-TP variant (「全部設定8-10%就全
+// 止盈,吃第一段就跑」+「止損一定都很遠…逐倉五倍開,爆倉價就是止損價」):
+// single all-out TP at +9% (mid of his 8-10%), far SL −20% ≈ 5x isolated-margin
+// liquidation proxy, timeout ×2 because far stops need time. His win-rate claim
+// gets measured here, not believed. T1's unlock clock stays on arm A until a
+// ladder is promoted.
+export type PaperArm = 'A' | 'B' | 'C';
+interface Ladder {
+  tp: [number, number, number]; // price multipliers
+  sl: number;
+  fracs: [number, number, number | null]; // tp3 null = close ALL at tp3 (no moonbag)
+  timeoutMult: number;
+  beAfterTp1?: boolean; // 老詹 2026-07-06 batch: 「TP1 後止損移至開倉價」— SL jumps to breakeven once TP1 fills
+}
+const LADDERS: Record<PaperArm, Ladder> = {
+  A: { tp: [1.04, 1.08, 1.15], sl: 0.97, fracs: [0.5, 0.3, null], timeoutMult: 1 },
+  B: { tp: [1.1, 1.25, 1.5], sl: 0.85, fracs: [0.3, 0.3, 0.35], timeoutMult: 2, beAfterTp1: true },
+  // all three TPs collapse to the same price: price ≥ tp3 closes EVERYTHING in
+  // the tp3 branch (fracs[2] = null), giving single-TP semantics without a new
+  // code path. tp1/tp2 branches are unreachable (same price, tp3 checked first).
+  C: { tp: [1.09, 1.09, 1.09], sl: 0.8, fracs: [0, 0, null], timeoutMult: 2 },
+};
 
 const MAX_OPEN = 5;
 const LEDGER_CAP = 2000;
@@ -48,6 +64,8 @@ export interface PaperPosition {
   remainingFrac: number; // fraction of the original size still open (1 → 0)
   tookTp1: boolean;
   tookTp2: boolean;
+  tookTp3?: boolean; // M4: B-arm tp3 is a PARTIAL (moonbag stays); absent on legacy A rows
+  arm?: PaperArm; // absent = legacy A position
 }
 
 export type PaperAction = 'open' | 'tp1' | 'tp2' | 'tp3' | 'sl' | 'timeout';
@@ -70,6 +88,11 @@ export interface PaperState {
   curve: [number, number][]; // [tsMs, equity], one point per driven sweep
   lastDriverTs: number;
   driver: 'app' | 'recorder' | '';
+  // M4: the B-arm (老詹 ladder) sub-book — same entries, own equity/ledger/curve.
+  // Absent on pre-M4 states; created fresh on the first driven sweep. Never nested.
+  armB?: PaperState;
+  // C-arm (老詹全止盈變體, clock start 2026-07-06) — same rules as armB.
+  armC?: PaperState;
 }
 
 export interface PaperStats {
@@ -134,7 +157,26 @@ export function drivePaper(
   fbEdges: Set<string>,
   nowMs: number,
 ): PaperState {
+  const next = driveBook(state, marks, fbEdges, nowMs, 'A');
+  // M4: drive the B/C-arm sub-books on the SAME marks/edges. Pre-existing
+  // states without an arm start it fresh here (A history untouched, that arm's
+  // clock starts on its first driven sweep).
+  const prevB = state.armB ?? createPaperState(state.cfg);
+  next.armB = driveBook(prevB, marks, fbEdges, nowMs, 'B');
+  const prevC = state.armC ?? createPaperState(state.cfg);
+  next.armC = driveBook(prevC, marks, fbEdges, nowMs, 'C');
+  return next;
+}
+
+function driveBook(
+  state: PaperState,
+  marks: Map<string, number>,
+  fbEdges: Set<string>,
+  nowMs: number,
+  arm: PaperArm,
+): PaperState {
   const cfg = state.cfg;
+  const lad = LADDERS[arm];
   let equity = state.equity;
   const ledger = state.ledger.slice();
   const feeOf = (notional: number) => Math.abs(notional) * (cfg.feePct / 100);
@@ -143,6 +185,7 @@ export function drivePaper(
   const kept: PaperPosition[] = [];
   for (const src of state.positions) {
     const pos = { ...src };
+    const posLad = LADDERS[pos.arm ?? 'A']; // fracs by the position's own arm (legacy = A)
     const P = marks.get(pos.sym);
     if (P == null || !Number.isFinite(P) || P <= 0) {
       kept.push(pos); // no price this sweep — leave it open, unmarked
@@ -157,30 +200,39 @@ export function drivePaper(
       ledger.push({ ts: nowMs, sym: pos.sym, action: 'sl', px: pos.sl, frac: pos.remainingFrac, pnl, equityAfter: equity });
       pos.remainingFrac = 0;
       terminal = true;
-    } else if (P >= pos.tp3) {
-      const size = pos.remainingFrac * pos.size;
+    } else if (P >= pos.tp3 && !pos.tookTp3) {
+      // A (fracs[2]=null): close everything. B: shed 0.35, the 5% moonbag rides
+      // until SL/timeout — 老詹's 夢想倉.
+      const frac = posLad.fracs[2] == null ? pos.remainingFrac : Math.min(posLad.fracs[2], pos.remainingFrac);
+      const size = frac * pos.size;
       const pnl = size * (pos.tp3 - pos.entry) - feeOf(size * pos.tp3);
       equity += pnl;
-      ledger.push({ ts: nowMs, sym: pos.sym, action: 'tp3', px: pos.tp3, frac: pos.remainingFrac, pnl, equityAfter: equity });
-      pos.remainingFrac = 0;
-      terminal = true;
+      pos.remainingFrac -= frac;
+      pos.tookTp3 = true;
+      ledger.push({ ts: nowMs, sym: pos.sym, action: 'tp3', px: pos.tp3, frac, pnl, equityAfter: equity });
+      terminal = pos.remainingFrac <= 1e-9;
     } else if (P >= pos.tp2 && !pos.tookTp2) {
-      const size = TP2_FRAC * pos.size;
+      const frac = Math.min(posLad.fracs[1], pos.remainingFrac);
+      const size = frac * pos.size;
       const pnl = size * (pos.tp2 - pos.entry) - feeOf(size * pos.tp2);
       equity += pnl;
-      pos.remainingFrac -= TP2_FRAC;
+      pos.remainingFrac -= frac;
       pos.tookTp2 = true;
-      ledger.push({ ts: nowMs, sym: pos.sym, action: 'tp2', px: pos.tp2, frac: TP2_FRAC, pnl, equityAfter: equity });
+      ledger.push({ ts: nowMs, sym: pos.sym, action: 'tp2', px: pos.tp2, frac, pnl, equityAfter: equity });
     } else if (P >= pos.tp1 && !pos.tookTp1) {
-      const size = TP1_FRAC * pos.size;
+      const frac = Math.min(posLad.fracs[0], pos.remainingFrac);
+      const size = frac * pos.size;
       const pnl = size * (pos.tp1 - pos.entry) - feeOf(size * pos.tp1);
       equity += pnl;
-      pos.remainingFrac -= TP1_FRAC;
+      pos.remainingFrac -= frac;
       pos.tookTp1 = true;
-      ledger.push({ ts: nowMs, sym: pos.sym, action: 'tp1', px: pos.tp1, frac: TP1_FRAC, pnl, equityAfter: equity });
+      // 老詹 rule (B arm): once TP1 fills, the stop jumps to breakeven — the
+      // remaining 70% can no longer turn the trade into a −15% loser.
+      if (posLad.beAfterTp1) pos.sl = Math.max(pos.sl, pos.entry);
+      ledger.push({ ts: nowMs, sym: pos.sym, action: 'tp1', px: pos.tp1, frac, pnl, equityAfter: equity });
     }
     // timeout closes whatever survived the price chain this sweep.
-    if (!terminal && pos.remainingFrac > 1e-9 && nowMs - pos.openedTs > cfg.timeoutH * 3600e3) {
+    if (!terminal && pos.remainingFrac > 1e-9 && nowMs - pos.openedTs > cfg.timeoutH * posLad.timeoutMult * 3600e3) {
       const size = pos.remainingFrac * pos.size;
       const pnl = size * (P - pos.entry) - feeOf(size * P);
       equity += pnl;
@@ -192,14 +244,14 @@ export function drivePaper(
   }
   const positions = kept;
 
-  // ---- 2. open on rising ⚡ edges -----------------------------------------
+  // ---- 2. open on rising ⚡ edges (identical entries in both arms) ---------
   if (cfg.enabled) {
     for (const sym of fbEdges) {
-      if (positions.length >= MAX_OPEN) break;
+      if (positions.length >= MAX_OPEN) break; // per-book cap — arms never steal slots
       if (positions.some((p) => p.sym === sym)) continue; // one position per coin
       const entry = marks.get(sym);
       if (entry == null || !Number.isFinite(entry) || entry <= 0) continue;
-      const sl = entry * SL_MULT;
+      const sl = entry * lad.sl;
       const size = (equity * (cfg.riskPct / 100)) / (entry - sl);
       if (!Number.isFinite(size) || size <= 0) continue;
       const openFee = feeOf(entry * size);
@@ -210,13 +262,15 @@ export function drivePaper(
         openedTs: nowMs,
         entry,
         size,
-        tp1: entry * TP1_MULT,
-        tp2: entry * TP2_MULT,
-        tp3: entry * TP3_MULT,
+        tp1: entry * lad.tp[0],
+        tp2: entry * lad.tp[1],
+        tp3: entry * lad.tp[2],
         sl,
         remainingFrac: 1,
         tookTp1: false,
         tookTp2: false,
+        tookTp3: false,
+        arm,
       });
       ledger.push({ ts: nowMs, sym, action: 'open', px: entry, frac: 1, pnl: -openFee, equityAfter: equity });
     }
@@ -232,7 +286,73 @@ export function drivePaper(
     positions,
     ledger: ledger.length > LEDGER_CAP ? ledger.slice(ledger.length - LEDGER_CAP) : ledger,
     curve: curve.length > CURVE_CAP ? curve.slice(curve.length - CURVE_CAP) : curve,
+    armB: undefined, // set only by drivePaper on the top-level book; never nested
+    armC: undefined,
   };
+}
+
+// ---- 交易簿 (blotter) — position-grouped fill history -----------------------
+// Same ledger walk as paperStats below (one open position per coin at a time),
+// but returning the per-position rows the 記錄 tab renders and exports. Pure
+// reconstruction from the ledger — never stored, so it can't drift from stats.
+export interface BlotterFill {
+  action: PaperAction;
+  ts: number;
+  px: number;
+  frac: number; // fraction of the ORIGINAL size this fill covers
+  pnl: number; // realized P&L of the fill, net of its fee
+}
+export interface BlotterPos {
+  sym: string;
+  openTs: number;
+  entry: number;
+  riskUsd: number; // equityAtOpen × riskPct — the objective bet size (1R)
+  fills: BlotterFill[]; // exits only, in fill order
+  pnl: number; // realized so far (includes the open fee)
+  r: number | null; // pnl / riskUsd; null while risk can't be derived
+  closed: boolean;
+  remainingFrac: number; // > 0 ⇒ still holding
+}
+
+export function paperBlotter(state: PaperState): BlotterPos[] {
+  const riskPct = state.cfg.riskPct;
+  const open = new Map<string, BlotterPos>();
+  const out: BlotterPos[] = [];
+  for (const row of state.ledger) {
+    if (row.action === 'open') {
+      const equityAtOpen = row.equityAfter - row.pnl; // pnl on an open row = −fee
+      const risk = equityAtOpen * (riskPct / 100);
+      open.set(row.sym, {
+        sym: row.sym,
+        openTs: row.ts,
+        entry: row.px,
+        riskUsd: risk > 0 ? risk : 0,
+        fills: [],
+        pnl: row.pnl,
+        r: null,
+        closed: false,
+        remainingFrac: 1,
+      });
+      continue;
+    }
+    const pos = open.get(row.sym);
+    if (!pos) continue; // orphan close (pre-cap ledger truncation); skip
+    pos.fills.push({ action: row.action, ts: row.ts, px: row.px, frac: row.frac, pnl: row.pnl });
+    pos.pnl += row.pnl;
+    pos.remainingFrac = Math.max(0, pos.remainingFrac - row.frac);
+    if (pos.remainingFrac <= 1e-3) {
+      pos.closed = true;
+      pos.remainingFrac = 0;
+      pos.r = pos.riskUsd > 0 ? pos.pnl / pos.riskUsd : null;
+      out.push(pos);
+      open.delete(row.sym);
+    }
+  }
+  for (const pos of open.values()) {
+    pos.r = pos.riskUsd > 0 ? pos.pnl / pos.riskUsd : null; // realized-so-far R
+    out.push(pos);
+  }
+  return out.sort((a, b) => b.openTs - a.openTs); // newest first
 }
 
 // Reconstruct closed positions by walking the ledger: an 'open' row starts a
@@ -242,7 +362,7 @@ export function drivePaper(
 // stored aggregates can never drift.
 export function paperStats(state: PaperState): PaperStats {
   const cfg = state.cfg;
-  const open = new Map<string, { pnl: number; r: number }>();
+  const open = new Map<string, { pnl: number; r: number; frac: number }>();
   const closed: number[] = []; // R-multiple per closed position
   const closedPnl: number[] = [];
 
@@ -252,13 +372,17 @@ export function paperStats(state: PaperState): PaperStats {
       // = equityAfter − pnl (pnl on an open row is just −fee).
       const equityAtOpen = row.equityAfter - row.pnl;
       const r = equityAtOpen * (cfg.riskPct / 100);
-      open.set(row.sym, { pnl: row.pnl, r: r > 0 ? r : NaN });
+      open.set(row.sym, { pnl: row.pnl, r: r > 0 ? r : NaN, frac: 0 });
       continue;
     }
     const seg = open.get(row.sym);
     if (!seg) continue; // orphan close (shouldn't happen); ignore
     seg.pnl += row.pnl;
-    if (row.action === 'sl' || row.action === 'tp3' || row.action === 'timeout') {
+    seg.frac += row.frac;
+    // a position is closed when its cumulative closed fraction reaches 1 — NOT
+    // on the action name: the B arm's tp3 is a PARTIAL (moonbag rides on until
+    // sl/timeout), so 'tp3' alone no longer implies terminal.
+    if (seg.frac >= 0.999) {
       closedPnl.push(seg.pnl);
       closed.push(Number.isFinite(seg.r) ? seg.pnl / seg.r : 0);
       open.delete(row.sym);

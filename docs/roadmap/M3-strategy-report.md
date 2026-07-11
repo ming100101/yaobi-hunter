@@ -139,3 +139,12 @@ Not exercised: live midnight roll-over (Verification 5) — the 60s date-change 
 型別改動:`StratTrade` = `{ sym, side, entryTs, entry, fills: Fill[], roi, open }`(roi 為保證金單位);`StratSide` = `{ long, short, skippedLong, skippedShort }`;`longStats`/`shortStats` → `sideStats`。UI(`StrategyView.tsx`):多空各自欄、n 顯示 `N` 或 `N/M`、明細 4 個 block(⚡多/⚡空/>70多/>70空)每筆列 fill tags(TP1/TP2/SL/收盤/持倉中)+ ROI%、方法行改寫。CLI `backtest --pnl` **不受影響**(另一套 1H close-to-close 近似,caveat 已聲明,無 bracket 模型)。
 
 驗證:`npm run typecheck` 乾淨;`npm run test-strategy` **20/20 PASS**(+1.40 winner、−1.00 SL、0.00 TP1-then-SL、+0.75 TP2-then-SL、short 鏡像路徑 +1.40、非鏡像、持倉阻再入、SL 後再入、gap guard、穩定幣剔除、open mark、skipped);`eval-rec` evalCore 未掂故邏輯不變;live dev-run 策略 tab 實測上述數字 + 明細無 USDC、無重複入場(除 SL 後)、fill tags 正確。
+
+## Amendment — 2026-07-06(用戶指示:加「+200% 全出」出場模式)
+
+第二個出場模式 `StratMode = 'allout'`,同一批 ⚡/>70 訊號、同一 20x 括號,唯一分別:
+- **單一 TP**:幣價 ±10%(= 保證金 +200%)一次全出,冇 TP1 partial、冇 runner;fill kind `allout`(UI 標「全出」)。
+- **首訊號 = 開倉時點**:每幣每日只入第一個訊號,SL 後**不**重入(ladder 模式 SL 後可重入,呢度唔准 — busyUntil 恆為 Infinity)。
+- SL 照舊幣價 ∓5% 爆倉式清零(20x 之下呢個唔係選擇,係物理);未觸發嘅倉日終平。
+
+UI:策略 tab 頂加 toggle(階梯出場 TP1/TP2 | +200% 全出(首訊號)),兩個 mode 同一次 parse 各起一份報表即時切換,方法行文字跟 mode 換。驗證:typecheck 乾淨;`test-strategy` **25/25 PASS**(新 fixture G:+2.00 單一全出、無 TP1 partial、fill kind、−1.00 爆倉、SL 後不重入);preview 實測 toggle 兩邊數字真係唔同(07-06 當日 >70 n:ladder 77/80 vs allout 75 — 首訊號 dedupe 生效)。
