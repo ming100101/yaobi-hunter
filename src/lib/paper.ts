@@ -23,6 +23,9 @@ import type { CoinLite } from '../types';
 // gets measured here, not believed. T1's unlock clock stays on arm A until a
 // ladder is promoted.
 export type PaperArm = 'A' | 'B' | 'C';
+export type PaperBookId = 'confirmed' | PaperArm;
+export const PAPER_ENTRY_POLICY_ID = 'next-closed-15m-v1@2026-07-14';
+export const PAPER_ENTRY_MAX_DELAY_MS = 45 * 60 * 1000;
 interface Ladder {
   tp: [number, number, number]; // price multipliers
   sl: number;
@@ -66,6 +69,9 @@ export interface PaperPosition {
   tookTp2: boolean;
   tookTp3?: boolean; // M4: B-arm tp3 is a PARTIAL (moonbag stays); absent on legacy A rows
   arm?: PaperArm; // absent = legacy A position
+  signalTs?: number; // v2 confirmed-entry provenance; absent on legacy immediate fills
+  signalPx?: number;
+  entryPolicyId?: string;
 }
 
 export type PaperAction = 'open' | 'tp1' | 'tp2' | 'tp3' | 'sl' | 'timeout';
@@ -78,6 +84,29 @@ export interface PaperLedgerRow {
   frac: number; // fraction of ORIGINAL size this fill covers (open = 1)
   pnl: number; // realized P&L of this fill, already net of its fee
   equityAfter: number;
+  signalTs?: number;
+  signalPx?: number;
+  entryPolicyId?: string;
+}
+
+export interface PaperEntryIntent {
+  id: string;
+  sym: string;
+  signalTs: number;
+  signalPx: number;
+  expiresTs: number;
+}
+
+export type PaperEntryAuditAction = 'queued' | 'filled' | 'expired' | 'capacity';
+export interface PaperEntryAuditRow {
+  ts: number;
+  sym: string;
+  action: PaperEntryAuditAction;
+  signalTs: number;
+  signalPx: number;
+  fillPx?: number;
+  delayMin?: number;
+  slippagePct?: number;
 }
 
 export interface PaperState {
@@ -93,6 +122,13 @@ export interface PaperState {
   armB?: PaperState;
   // C-arm (老詹全止盈變體, clock start 2026-07-06) — same rules as armB.
   armC?: PaperState;
+  // v2 execution-fidelity book. A signal is queued on its completed 15m edge
+  // and may fill only on the next observed sweep. Legacy A/B/C remain frozen
+  // immediate-entry controls and never share this book's denominator.
+  confirmed?: PaperState;
+  pending?: PaperEntryIntent[];
+  entryAudit?: PaperEntryAuditRow[];
+  entryPolicyId?: string;
 }
 
 export interface PaperStats {
@@ -165,7 +201,124 @@ export function drivePaper(
   next.armB = driveBook(prevB, marks, fbEdges, nowMs, 'B');
   const prevC = state.armC ?? createPaperState(state.cfg);
   next.armC = driveBook(prevC, marks, fbEdges, nowMs, 'C');
+  const prevConfirmed = state.confirmed ?? createConfirmedPaperState(state.cfg);
+  next.confirmed = driveConfirmedBook(prevConfirmed, marks, fbEdges, nowMs);
   return next;
+}
+
+export function createConfirmedPaperState(cfg: PaperCfg = DEFAULT_PAPER_CFG): PaperState {
+  return {
+    ...createPaperState(cfg),
+    pending: [],
+    entryAudit: [],
+    entryPolicyId: PAPER_ENTRY_POLICY_ID,
+  };
+}
+
+export function paperBook(state: PaperState, id: PaperBookId): PaperState | null {
+  if (id === 'confirmed') return state.confirmed ?? null;
+  if (id === 'A') return state;
+  return id === 'B' ? (state.armB ?? null) : (state.armC ?? null);
+}
+
+// Queue at the signal close, fill only on a later observed sweep. This is an
+// execution-fidelity rule, not a tuned alpha filter: no EMA/percentage choice is
+// made and no future price is inspected. A recorder gap beyond 45 minutes expires
+// the intent instead of pretending a fill was available.
+function driveConfirmedBook(
+  state: PaperState,
+  marks: Map<string, number>,
+  fbEdges: Set<string>,
+  nowMs: number,
+): PaperState {
+  const sourcePending = state.pending ?? [];
+  const fillable = new Map<string, PaperEntryIntent>();
+  const waiting: PaperEntryIntent[] = [];
+  const audit = (state.entryAudit ?? []).slice();
+
+  for (const intent of sourcePending) {
+    if (nowMs > intent.expiresTs) {
+      audit.push({
+        ts: nowMs,
+        sym: intent.sym,
+        action: 'expired',
+        signalTs: intent.signalTs,
+        signalPx: intent.signalPx,
+      });
+      continue;
+    }
+    const px = marks.get(intent.sym);
+    if (nowMs > intent.signalTs && px != null && Number.isFinite(px) && px > 0) fillable.set(intent.sym, intent);
+    else waiting.push(intent);
+  }
+
+  const beforeIds = new Set(state.positions.map((p) => p.id));
+  let next = driveBook(state, marks, new Set(fillable.keys()), nowMs, 'A');
+  const filledSyms = new Set(
+    next.positions.filter((p) => !beforeIds.has(p.id) && p.openedTs === nowMs).map((p) => p.sym),
+  );
+
+  next.positions = next.positions.map((p) => {
+    const intent = p.openedTs === nowMs ? fillable.get(p.sym) : undefined;
+    return intent
+      ? { ...p, signalTs: intent.signalTs, signalPx: intent.signalPx, entryPolicyId: PAPER_ENTRY_POLICY_ID }
+      : p;
+  });
+  next.ledger = next.ledger.map((row) => {
+    const intent = row.action === 'open' && row.ts === nowMs ? fillable.get(row.sym) : undefined;
+    return intent
+      ? { ...row, signalTs: intent.signalTs, signalPx: intent.signalPx, entryPolicyId: PAPER_ENTRY_POLICY_ID }
+      : row;
+  });
+
+  for (const intent of fillable.values()) {
+    if (filledSyms.has(intent.sym)) {
+      const fillPx = marks.get(intent.sym)!;
+      audit.push({
+        ts: nowMs,
+        sym: intent.sym,
+        action: 'filled',
+        signalTs: intent.signalTs,
+        signalPx: intent.signalPx,
+        fillPx,
+        delayMin: (nowMs - intent.signalTs) / 60_000,
+        slippagePct: (fillPx / intent.signalPx - 1) * 100,
+      });
+    } else {
+      audit.push({
+        ts: nowMs,
+        sym: intent.sym,
+        action: 'capacity',
+        signalTs: intent.signalTs,
+        signalPx: intent.signalPx,
+      });
+    }
+  }
+
+  const occupied = new Set([...next.positions.map((p) => p.sym), ...waiting.map((p) => p.sym)]);
+  for (const sym of fbEdges) {
+    if (occupied.has(sym)) continue;
+    const signalPx = marks.get(sym);
+    if (signalPx == null || !Number.isFinite(signalPx) || signalPx <= 0) continue;
+    const intent: PaperEntryIntent = {
+      id: `${PAPER_ENTRY_POLICY_ID}:${sym}:${nowMs}`,
+      sym,
+      signalTs: nowMs,
+      signalPx,
+      expiresTs: nowMs + PAPER_ENTRY_MAX_DELAY_MS,
+    };
+    waiting.push(intent);
+    occupied.add(sym);
+    audit.push({ ts: nowMs, sym, action: 'queued', signalTs: nowMs, signalPx });
+  }
+
+  return {
+    ...next,
+    pending: waiting,
+    entryAudit: audit.length > LEDGER_CAP ? audit.slice(audit.length - LEDGER_CAP) : audit,
+    entryPolicyId: PAPER_ENTRY_POLICY_ID,
+    confirmed: undefined,
+  };
 }
 
 function driveBook(
@@ -312,6 +465,10 @@ export interface BlotterPos {
   r: number | null; // pnl / riskUsd; null while risk can't be derived
   closed: boolean;
   remainingFrac: number; // > 0 ⇒ still holding
+  signalTs?: number;
+  signalPx?: number;
+  entryPolicyId?: string;
+  entrySlippagePct?: number;
 }
 
 export function paperBlotter(state: PaperState): BlotterPos[] {
@@ -332,6 +489,10 @@ export function paperBlotter(state: PaperState): BlotterPos[] {
         r: null,
         closed: false,
         remainingFrac: 1,
+        signalTs: row.signalTs,
+        signalPx: row.signalPx,
+        entryPolicyId: row.entryPolicyId,
+        entrySlippagePct: row.signalPx && row.signalPx > 0 ? (row.px / row.signalPx - 1) * 100 : undefined,
       });
       continue;
     }

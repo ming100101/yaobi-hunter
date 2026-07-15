@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest a product or research improvement.
+title: "[Idea]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What problem would this solve?
+      description: Describe the user decision or workflow that is difficult today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: Explain the smallest useful outcome, not only a technical implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or examples
+      description: For strategy ideas, include failures as well as successful examples.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I understand Yaobi Hunter does not place trades or guarantee profit.
+          required: true

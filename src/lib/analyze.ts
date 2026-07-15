@@ -260,6 +260,10 @@ export function featureVector(
   const tot4h = last4h.reduce((a, v) => a + v.value, 0);
   const buyShare4h =
     tot4h > 0 ? last4h.filter((v) => v.up).reduce((a, v) => a + v.value, 0) / tot4h : 0.5;
+  const takerKnown = last4h.length > 0 && last4h.every((v) => v.takerBuy != null);
+  const takerBuyShare4h = takerKnown && tot4h > 0
+    ? last4h.reduce((a, v) => a + (v.takerBuy ?? 0), 0) / tot4h
+    : null;
 
   // funding can be shorter than candles on throttled partial coins; a missing
   // point reads as 0, matching getFunding's flat-0 resample of an empty history
@@ -278,7 +282,7 @@ export function featureVector(
   const bwNow = widths.length ? widths[widths.length - 1] : 0;
   const bbPctile = widths.length ? widths.filter((x) => x <= bwNow).length / widths.length : 0.5;
 
-  return { ret4h, pos, buyShare4h, f8h, bbPctile };
+  return { ret4h, pos, buyShare4h, takerBuyShare4h, f8h, bbPctile };
 }
 // ---------------------------------------------------------------------------
 

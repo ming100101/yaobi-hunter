@@ -21,6 +21,7 @@ import { top10Ranks } from '../lib/rank';
 import { EARLY_PUMP_SHIPPED, IGNITION_SHIPPED } from '../lib/analyze'; // S14 badge gate (false); 5m 點火 badge gate (true, 2026-07-09)
 import { kvGet, kvSet } from '../data/cache';
 import HelpModal from './HelpModal';
+import { SIGNAL_EVIDENCE_COPY } from '../lib/evidenceCopy';
 
 interface Props {
   scan: ScanResult;
@@ -148,27 +149,27 @@ function Row({
           </span>
         )}
         {c.flushBreakout && (
-          <span className="fb-badge" title="縮倉突破 — 回測 lift ×2 訊號進行中">
+          <span className="fb-badge" title={SIGNAL_EVIDENCE_COPY.flushBreakout.badge}>
             ⚡{t?.fb ? <span className="sig-age">{fmtAge(t.fb)}</span> : null}
           </span>
         )}
         {!c.flushBreakout && c.earlyAccum && (
-          <span className="ea-badge" title="早期蓄力 — 觀察名單級（回測 lift ×1.0-1.2），非進場訊號">
+          <span className="ea-badge" title={SIGNAL_EVIDENCE_COPY.earlyAccum.badge}>
             蓄{t?.ea ? <span className="sig-age">{fmtAge(t.ea)}</span> : null}
           </span>
         )}
         {c.spotPump && (
-          <span className="sp-badge" title="現貨帶動 — 現貨量Z 驅動的拉升（回測 lift ×1.79），排序參考，非進場訊號">
+          <span className="sp-badge" title={SIGNAL_EVIDENCE_COPY.spotPump.badge}>
             現
           </span>
         )}
         {c.virginBreakout && !c.flushBreakout && !c.rebuildBreakout && (
-          <span className="sp-badge" title="處女增倉 — 48h 零 flush 純增倉擴張帶量突破 24h 高（回測 lift ×2.76，EVAA 型），排序參考，非進場訊號">
+          <span className="sp-badge" title={SIGNAL_EVIDENCE_COPY.virginBreakout.badge}>
             擴
           </span>
         )}
         {c.rebuildBreakout && !c.flushBreakout && (
-          <span className="sp-badge" title="增倉突破 — OI 縮完重建後帶量突破 24h 高（回測 lift ×2.60，CAP 型），排序參考，非進場訊號">
+          <span className="sp-badge" title={SIGNAL_EVIDENCE_COPY.rebuildBreakout.badge}>
             增
           </span>
         )}
@@ -325,7 +326,7 @@ export default function ScreenerList({
             type="button"
             className={`fb-toggle${fbOnly ? ' on' : ''}`}
             onClick={onFbToggle}
-            title="只顯示縮倉突破訊號（回測 154 幣 37 日：命中率 9.1% vs 4.5%，lift ×2.0）"
+            title={SIGNAL_EVIDENCE_COPY.flushBreakout.filter}
             aria-pressed={fbOnly}
           >
             ⚡ 縮倉突破
@@ -408,7 +409,7 @@ export default function ScreenerList({
         {rows.length === 0 && (
           <div className="sr-empty muted">
             {fbOnly
-              ? '目前沒有縮倉突破訊號。此訊號稀少屬正常 — 回測 37 日、154 隻幣僅出現 55 次。'
+              ? SIGNAL_EVIDENCE_COPY.flushBreakout.empty
               : '沒有符合篩選條件的幣。'}
           </div>
         )}

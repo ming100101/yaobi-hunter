@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { EVIDENCE_AUDIT_AS_OF } from '../lib/evidenceCopy';
 
 // U3 help modal. Deliberately does NOT hardcode per-signal lift numbers (×2.04
 // etc.): those are under active monthly revalidation (E1 / the 2026-07-08 baseline
@@ -33,13 +34,13 @@ export default function HelpModal({ onClose }: { onClose: () => void }) {
           <h3>符號</h3>
           <ul>
             <li>
-              <b>⚡ 縮倉突破</b> — 回測衍生嘅突破訊號,全市場約每日 1-2 次,有通知。
+              <b>⚡ 縮倉突破</b> — 歷史研究衍生嘅突破訊號，有通知；現時仍做 Binance 前向重驗。
             </li>
             <li>
               <b>蓄 早期蓄力</b> — 觀察名單級,非進場訊號,無通知。
             </li>
             <li>
-              <b>增 增倉突破 / 擴 處女增倉</b> — 回測衍生嘅突破變體,排序參考,非進場。
+              <b>增 增倉突破 / 擴 處女增倉</b> — 歷史研究衍生嘅突破變體，前向重驗中，非進場。
             </li>
             <li>
               <b>現 現貨帶動</b> — 現貨量驅動嘅拉升,排序參考。
@@ -74,7 +75,8 @@ export default function HelpModal({ onClose }: { onClose: () => void }) {
           <h3>誠實聲明</h3>
           <p>
             強度與階段為示範性評分。訊號嘅回測數字都有單一市況窗口等限制,<b>每月重驗證</b>
-            (數字隨之更新,詳見 roadmap 報告),部分訊號嘅預測力仍在覆核中。<b>非投資建議。</b>
+            (數字隨之更新,詳見 roadmap 報告),部分訊號嘅預測力仍在覆核中。畫面標示嘅「舊研究窗」唔係現時命中率；
+            截至 {EVIDENCE_AUDIT_AS_OF}，⚡ 嘅 Binance 前向資料未證實 24h 優勢，最新數字請睇「記錄」。<b>非投資建議。</b>
           </p>
         </section>
       </div>

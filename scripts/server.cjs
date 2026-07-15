@@ -63,6 +63,19 @@ function recordingsDir() {
   return path.join(base, 'YaobiHunter', 'recordings');
 }
 
+function strategyLabPath() {
+  return path.join(path.dirname(recordingsDir()), 'strategy-lab.json');
+}
+
+function handleStrategyLab(_req, res) {
+  let body = '{"v":1,"generatedAt":0,"rows":[],"candidates":[],"outcomes":[],"policy":{"id":"balanced-v1","leverage":1,"riskPerTradePct":0.5,"maxPositionNotionalPct":20,"maxOpenPositions":4,"maxOpenRiskPct":2,"dailyLossBlockPct":1.5,"drawdownLockPct":10}}';
+  try { body = fs.readFileSync(strategyLabPath(), 'utf8'); } catch { /* first run */ }
+  res.statusCode = 200;
+  res.setHeader('content-type', 'application/json');
+  res.setHeader('cache-control', 'no-store');
+  res.end(body);
+}
+
 function appendRecord(req, res) {
   let body = '';
   req.on('data', (c) => (body += c));
@@ -119,6 +132,60 @@ function handleRecordings(req, res) {
   res.end(out);
 }
 
+// GET /signal-events?symbol=THE&from=YYYY-MM-DD&to=YYYY-MM-DD -> only the
+// successful notify and entry-watch rows needed by Coin Detail. CJS mirror of
+// scripts/signalEventsServe.ts for the SEA executable.
+function handleSignalEvents(req, res) {
+  const q = new URL(req.url, 'http://localhost');
+  const sym = (q.searchParams.get('symbol') || '').trim().toUpperCase();
+  const from = q.searchParams.get('from') || '';
+  const to = q.searchParams.get('to') || '';
+  const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+  if (!sym || sym.length > 64) {
+    res.writeHead(400, { 'content-type': 'text/plain' });
+    return res.end('invalid symbol');
+  }
+  if (!isDate(from) || !isDate(to)) {
+    res.writeHead(400, { 'content-type': 'text/plain' });
+    return res.end('from/to must be YYYY-MM-DD');
+  }
+  const fromMs = Date.parse(from + 'T00:00:00Z');
+  const toMs = Date.parse(to + 'T00:00:00Z');
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || toMs < fromMs) {
+    res.writeHead(400, { 'content-type': 'text/plain' });
+    return res.end('invalid range (to before from?)');
+  }
+  if ((toMs - fromMs) / 86400000 > 31) {
+    res.writeHead(413, { 'content-type': 'text/plain' });
+    return res.end('range too wide (> 31 days)');
+  }
+  let out = '';
+  try {
+    const dir = recordingsDir();
+    for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).sort()) {
+      const day = file.slice(0, -6);
+      if (day < from || day > to) continue;
+      for (const line of fs.readFileSync(path.join(dir, file), 'utf8').split('\n')) {
+        if (!line || (!line.includes('"type":"notify"') && !line.includes('entry-watch') && !line.includes('entry_watch'))) continue;
+        try {
+          const event = JSON.parse(line);
+          if (
+            (event.type === 'notify' || event.type === 'entry-watch' || event.type === 'entry_watch') &&
+            typeof event.sym === 'string' &&
+            event.sym.toUpperCase() === sym
+          ) out += line + '\n';
+        } catch {
+          /* skip malformed audit line */
+        }
+      }
+    }
+  } catch {
+    /* no recordings yet */
+  }
+  res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+  res.end(out);
+}
+
 // Single kv.json under LOCALAPPDATA: the port-agnostic home for the small
 // persisted keys (pins, recently-viewed, signal ages, notify cooldowns, warm OI
 // store). IndexedDB is per-origin, so the port drift (4780 -> 4781 when the port
@@ -165,6 +232,87 @@ function handleKv(req, res) {
   });
 }
 
+function deepReclaimFilePath() {
+  const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  return path.join(base, 'YaobiHunter', 'deep-reclaim.json');
+}
+
+function readDeepReclaimState() {
+  try {
+    return JSON.parse(fs.readFileSync(deepReclaimFilePath(), 'utf8'));
+  } catch {
+    return { v: 1, updatedAt: 0, active: {} };
+  }
+}
+
+function readRecentDeepReclaimEvents() {
+  const out = [];
+  try {
+    const dir = recordingsDir();
+    for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).sort().slice(-8)) {
+      for (const line of fs.readFileSync(path.join(dir, file), 'utf8').split('\n')) {
+        if (!line.includes('"type":"deep-reclaim"')) continue;
+        try { out.push(JSON.parse(line)); } catch { /* skip malformed audit line */ }
+      }
+    }
+  } catch {
+    /* no recordings yet */
+  }
+  return out.slice(-1500);
+}
+
+function handleDeepReclaim(req, res) {
+  if (req.method === 'GET') {
+    const kv = readKvFile();
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      state: readDeepReclaimState(),
+      events: readRecentDeepReclaimEvents(),
+      references: kv['ref-signals'] || [],
+    }));
+    return;
+  }
+  if (req.method !== 'POST') {
+    res.writeHead(405);
+    return res.end();
+  }
+  readJsonBody(req, (b) => {
+    const sym = typeof b.sym === 'string' ? b.sym.trim().toUpperCase() : '';
+    const ts = Number(b.ts);
+    const px = Number(b.px);
+    const refStrength = Number(b.refStrength);
+    if (!/^[A-Z0-9]{1,24}$/.test(sym) || !Number.isFinite(ts) || !(px > 0) || !Number.isFinite(refStrength)) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ ok: false, error: 'invalid reference signal' }));
+    }
+    const signal = {
+      ts: Math.trunc(ts),
+      tsProvisional: b.tsProvisional === true,
+      src: 'laozhan',
+      sym,
+      side: 'LONG',
+      kind: typeof b.kind === 'string' && b.kind.trim() ? b.kind.trim().slice(0, 60) : '參考訊號',
+      refStrength,
+      px,
+      anchorMethod: b.tsProvisional === true ? 'chart-entry-cross-estimate' : 'actual-message',
+      uncertaintyMs: b.tsProvisional === true ? 15 * 60_000 : 0,
+      notes: typeof b.notes === 'string' ? b.notes.trim().slice(0, 400) : undefined,
+    };
+    const p = kvFilePath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    const kv = readKvFile();
+    const current = (Array.isArray(kv['ref-signals']) ? kv['ref-signals'] : []).filter(
+      (x) => !(x && x.sym === signal.sym && Number(x.ts) === signal.ts),
+    );
+    current.push(signal);
+    kv['ref-signals'] = current;
+    fs.writeFileSync(p + '.tmp', JSON.stringify(kv));
+    fs.renameSync(p + '.tmp', p);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, signal }));
+  });
+}
+
 // --- notification setup endpoints (mirror of vite's notifyEndpoints) --------
 // The 設定 tab calls these; all Telegram/toast I/O runs here in Node so the
 // browser avoids CORS and a test exercises the real send path.
@@ -172,9 +320,17 @@ function tgEscape(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function tgSend(token, chatId, text, cb) {
+function tgSend(token, chatId, text, cb, options = {}) {
   if (!token || !chatId) return cb({ ok: false, error: 'missing token or chat id' });
-  const payload = JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' });
+  const payload = JSON.stringify({
+    chat_id: chatId,
+    text,
+    parse_mode: 'HTML',
+    disable_notification: options.silent === true,
+    ...(options.replyToMessageId
+      ? { reply_parameters: { message_id: options.replyToMessageId, allow_sending_without_reply: true } }
+      : {}),
+  });
   const r = https.request(
     {
       hostname: 'api.telegram.org',
@@ -188,7 +344,11 @@ function tgSend(token, chatId, text, cb) {
       resp.on('end', () => {
         try {
           const j = JSON.parse(d);
-          cb(j.ok ? { ok: true } : { ok: false, error: j.description || `http ${resp.statusCode}` });
+          cb(
+            j.ok
+              ? { ok: true, messageId: Number(j.result && j.result.message_id) || undefined }
+              : { ok: false, error: j.description || `http ${resp.statusCode}` },
+          );
         } catch {
           cb({ ok: false, error: `http ${resp.statusCode}` });
         }
@@ -282,6 +442,68 @@ function handleNotifyTest(req, res) {
   });
 }
 
+function handleNotifyTestEntry(req, res) {
+  readJsonBody(req, (b) => {
+    const initial = '📈 增倉突破 — <b>測試</b>/USDT\n結構入場區 0.1170–0.1190\n狀態：⏳ 已開啟推送後入場監察';
+    tgSend(b.token, b.chatId, initial, (first) => {
+      if (!first.ok) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ initial: first, followup: { ok: false, error: 'initial test failed' } }));
+      }
+      const follow =
+        '🟢 <b>入場區到價</b> — 測試/USDT\n現價 0.1182 · 已於15m回踩企穩\n' +
+        '到價只代表結構價位已到，請重新評估風險，並非買入指令。';
+      tgSend(
+        b.token,
+        b.chatId,
+        follow,
+        (second) => {
+          const done = (toast) => {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ initial: first, followup: second, toast }));
+          };
+          if (b.toast === false) done({ ok: true, error: 'skipped' });
+          else winToast('🟢 入場區到價 — 測試', '15m回踩企穩 · 請重新評估風險', done);
+        },
+        { replyToMessageId: first.messageId },
+      );
+    });
+  });
+}
+
+function handleNotifyTestDeepReclaim(req, res) {
+  readJsonBody(req, (b) => {
+    const initial =
+      '🟡 <b>深跌收復早察（測試）</b> — TEST/USDT\n' +
+      '回撤 -10.2% · quantity OI 1h +1.4% / 4h +5.8%\n' +
+      '確認線 0.1180 · 失效參考 0.1090\n市場研究提醒，並非買入指令。';
+    tgSend(b.token, b.chatId, initial, (first) => {
+      if (!first.ok) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ initial: first, followup: { ok: false, error: 'initial test failed' } }));
+      }
+      const followup =
+        '🟢 <b>阻力收復確認（測試）</b> — TEST/USDT\n' +
+        '確認價 0.1183 · 確認線 0.1180\n等待 1小時15分 · quantity OI 4h +6.1%\n' +
+        '請重新評估風險，並非買入指令。';
+      tgSend(
+        b.token,
+        b.chatId,
+        followup,
+        (second) => {
+          const done = (toast) => {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ initial: first, followup: second, toast }));
+          };
+          if (b.toast === false) done({ ok: true, error: 'skipped' });
+          else winToast('🟢 阻力收復確認 — 測試', 'TEST/USDT · 請重新評估風險', done);
+        },
+        { replyToMessageId: first.messageId },
+      );
+    });
+  });
+}
+
 function proxyTo(hostname, prefix, req, res, pathBase = '') {
   const upstreamPath = pathBase + (req.url.slice(prefix.length) || '/');
   const up = https.request(
@@ -327,7 +549,12 @@ const server = http.createServer((req, res) => {
   if (rawUrl === '/kv' && (req.method === 'GET' || req.method === 'POST')) return handleKv(req, res);
   if (rawUrl === '/notify-detect-chat' && req.method === 'POST') return handleNotifyDetect(req, res);
   if (rawUrl === '/notify-test' && req.method === 'POST') return handleNotifyTest(req, res);
+  if (rawUrl === '/notify-test-entry' && req.method === 'POST') return handleNotifyTestEntry(req, res);
+  if (rawUrl === '/notify-test-deep-reclaim' && req.method === 'POST') return handleNotifyTestDeepReclaim(req, res);
+  if (rawUrl === '/deep-reclaim' && (req.method === 'GET' || req.method === 'POST')) return handleDeepReclaim(req, res);
   if (rawUrl.startsWith('/recordings') && req.method === 'GET') return handleRecordings(req, res);
+  if (rawUrl.startsWith('/signal-events') && req.method === 'GET') return handleSignalEvents(req, res);
+  if (rawUrl.startsWith('/strategy-lab') && req.method === 'GET') return handleStrategyLab(req, res);
 
   let rel = rawUrl.split('?')[0];
   rel = rel === '/' ? 'index.html' : decodeURIComponent(rel.slice(1));

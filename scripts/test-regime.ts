@@ -41,4 +41,7 @@ const reg = await getBtcRegime(BN_LIVE);
 ok('getBtcRegime live', reg != null && ['up', 'down', 'chop'].includes(reg.regime) && Number.isFinite(reg.ret7d), reg ? `${reg.regime} (ret7d ${reg.ret7d}%)` : 'null');
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS');
-process.exit(fails ? 1 : 0);
+// Let undici close its Windows async handles naturally after the live fetch.
+// A forced process.exit() can race that cleanup and abort in libuv even after
+// every assertion passed.
+process.exitCode = fails ? 1 : 0;

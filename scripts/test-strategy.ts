@@ -1,7 +1,13 @@
 // M3 unit check (amended: 20x bracket exits + position discipline).
 // Run: `npm run test-strategy`. All numbers are exact per the spec worked cases.
 import { parseRecordings, SLOT_MS } from '../src/lib/evalCore';
-import { buildDailyReport, sideStats, type StratDay, type StratMode } from '../src/lib/strategyReport';
+import {
+  buildDailyReport,
+  sideStats,
+  type StratDay,
+  type StratEntryMode,
+  type StratMode,
+} from '../src/lib/strategyReport';
 
 let fail = 0;
 const approx = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps;
@@ -23,14 +29,35 @@ const row = (c: C): (string | number)[] => {
   return r;
 };
 // steps[k] = null (skipped slot → gap) or a list of coin tuples for slot SLOT0+k
-function reportDay(steps: (C[] | null)[], nowMs: number, mode: StratMode = 'ladder'): StratDay | null {
+function reportDay(
+  steps: (C[] | null)[],
+  nowMs: number,
+  mode: StratMode = 'ladder',
+  entryMode: StratEntryMode = 'signal',
+): StratDay | null {
   const lines: string[] = [];
   steps.forEach((coins, k) => {
     if (!coins) return;
     const slot = SLOT0 + k;
     lines.push(JSON.stringify({ v: 2, ts: slot * SLOT_MS, slot, source: 'binance', coins: coins.map(row) }));
   });
-  return buildDailyReport(parseRecordings(lines.join('\n')), 14, nowMs, mode)[0] ?? null;
+  return buildDailyReport(parseRecordings(lines.join('\n')), 14, nowMs, mode, entryMode)[0] ?? null;
+}
+
+// ---- Fixture H: confirmed entry uses the next contiguous completed slot ----
+{
+  const H: C[][] = [
+    [['WAIT', 1.0, 50, 0]],
+    [['WAIT', 1.0, 50, 1]], // signal close — must not be the fill
+    [['WAIT', 1.02, 50, 0]], // next completed 15m close = fill
+    [['WAIT', 1.071, 50, 0]], // +5% from actual fill = TP1
+  ];
+  const d = reportDay(H, JULY2, 'ladder', 'confirmed')!;
+  const t = d.fb.long[0];
+  ok('H: confirmed entry fills next slot', approx(t.entry, 1.02), t.entry);
+  ok('H: confirmed entry delay = 15m', approx(t.entryDelayMin, 15), t.entryDelayMin);
+  ok('H: confirmed entry records +2% slippage', approx(t.entrySlippagePct, 2), t.entrySlippagePct);
+  ok('H: confirmed entry provenance keeps signal price', approx(t.signalPrice, 1.0), t.signalPrice);
 }
 const find = (arr: { sym: string }[], sym: string) => arr.find((t) => t.sym === sym);
 

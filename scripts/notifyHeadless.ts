@@ -3,8 +3,19 @@ import { readKvFile, writeKvKey } from './kvFile';
 import { appendRecordLine } from './recordFile';
 import { renderCandlePng } from './chartPng';
 import { fmtPct, fmtPrice } from '../src/lib/format';
-import type { Candle, CoinLite, ExitPlan, NotifyCfg } from '../src/types';
+import type {
+  Candle,
+  CoinLite,
+  DeliveredSignal,
+  DeliveredPush,
+  ExitPlan,
+  NotifyCfg,
+  NotifyRunResult,
+  NotifySignalClass,
+} from '../src/types';
 import type { Insight } from '../src/lib/interpret';
+import { ENTRY_WATCH_PROMOTED, entryWatchId } from '../src/lib/entryWatch';
+import { SIGNAL_EVIDENCE_COPY } from '../src/lib/evidenceCopy';
 
 // Notification I/O for the headless recorder AND the dev/exe server's setup
 // endpoints. Everything runs in Node (Telegram fetch + Windows toast via
@@ -15,34 +26,50 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 
 // R4: per-coin payload for the rich signal card, captured from the FULL Coin
 // before toLite strips the series. insights = interpret(coin) output — the
-// exact objects the detail page renders, so card numbers can never drift from
-// the app (the lift figures below are regex-lifted out of those same strings).
+// exact objects the detail page renders, so card facts cannot drift from the
+// app. Historical lift figures are intentionally omitted from the live card.
 export interface NotifyRich {
   candles: Candle[];
   plan: ExitPlan;
   insights: Insight[];
+  entryWatch?: { support: number; atr: number };
 }
 
 export interface Channel {
   ok: boolean;
   error?: string;
+  messageId?: number;
+}
+
+export interface TelegramSendOptions {
+  replyToMessageId?: number;
+  silent?: boolean;
 }
 
 export async function sendTelegram(
   token: string | undefined,
   chatId: string | undefined,
   text: string,
+  options: TelegramSendOptions = {},
 ): Promise<Channel> {
   if (!token || !chatId) return { ok: false, error: 'missing token or chat id' };
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        disable_notification: options.silent === true,
+        ...(options.replyToMessageId
+          ? { reply_parameters: { message_id: options.replyToMessageId, allow_sending_without_reply: true } }
+          : {}),
+      }),
     });
     const j: any = await res.json().catch(() => ({}));
     if (!res.ok || j.ok === false) return { ok: false, error: j.description || `http ${res.status}` };
-    return { ok: true };
+    return { ok: true, messageId: Number(j.result?.message_id) || undefined };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -55,6 +82,7 @@ export async function sendTelegramPhoto(
   chatId: string | undefined,
   png: Buffer,
   caption: string,
+  options: TelegramSendOptions = {},
 ): Promise<Channel> {
   if (!token || !chatId) return { ok: false, error: 'missing token or chat id' };
   try {
@@ -62,6 +90,13 @@ export async function sendTelegramPhoto(
     fd.append('chat_id', chatId);
     fd.append('caption', caption);
     fd.append('parse_mode', 'HTML');
+    if (options.silent) fd.append('disable_notification', 'true');
+    if (options.replyToMessageId) {
+      fd.append(
+        'reply_parameters',
+        JSON.stringify({ message_id: options.replyToMessageId, allow_sending_without_reply: true }),
+      );
+    }
     fd.append('photo', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'chart.png');
     const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
       method: 'POST',
@@ -69,7 +104,7 @@ export async function sendTelegramPhoto(
     });
     const j: any = await res.json().catch(() => ({}));
     if (!res.ok || j.ok === false) return { ok: false, error: j.description || `http ${res.status}` };
-    return { ok: true };
+    return { ok: true, messageId: Number(j.result?.message_id) || undefined };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -99,27 +134,31 @@ const CARD_EXTRA_IDS = new Set(['squeeze-breakout', 'boarding-reclaim', 'spot-le
 // everywhere so R2/R4 behaviour is untouched; S9 增倉突破 is the second class
 // (gate-passed 2026-07-06, user decision: gate-passers notify).
 export interface NotifyClass {
+  id: NotifySignalClass;
   cdKey: string; // kv cooldown map key
   title: string; // card/toast header, e.g. '⚡ 縮倉突破'
   tail: string; // the closing lift/caveat line
   fires: (c: CoinLite) => boolean;
 }
 export const CLASS_FB: NotifyClass = {
+  id: 'fb',
   cdKey: 'fb-notified-headless',
   title: '⚡ 縮倉突破',
-  tail: '回測 lift ×2 訊號,僅供參考',
+  tail: SIGNAL_EVIDENCE_COPY.flushBreakout.notify,
   fires: (c) => c.flushBreakout,
 };
 export const CLASS_REBUILD: NotifyClass = {
+  id: 'rb',
   cdKey: 'rb-notified-headless',
   title: '📈 增倉突破',
-  tail: '回測 lift ×2.6 訊號(期望值薄,出場紀律行先),僅供參考',
+  tail: SIGNAL_EVIDENCE_COPY.rebuildBreakout.notify,
   fires: (c) => c.rebuildBreakout === true,
 };
 export const CLASS_VIRGIN: NotifyClass = {
+  id: 'vg',
   cdKey: 'vg-notified-headless',
   title: '🚀 處女增倉',
-  tail: '回測 lift ×2.76 訊號(期望值薄,出場紀律行先),僅供參考',
+  tail: SIGNAL_EVIDENCE_COPY.virginBreakout.notify,
   fires: (c) => c.virginBreakout === true,
 };
 
@@ -127,22 +166,28 @@ export const CLASS_VIRGIN: NotifyClass = {
 // ExitPlan / Insight objects the app renders — nothing is recomputed here.
 // Caption cap is 1024: optional lines are dropped lowest-priority-first until
 // it fits; the title and TP/SL lines always survive.
-export function buildSignalCard(c: CoinLite, rich: NotifyRich, klass: NotifyClass = CLASS_FB): string {
+export function buildSignalCard(
+  c: CoinLite,
+  rich: NotifyRich,
+  klass: NotifyClass = CLASS_FB,
+  entryWatchActive = false,
+): string {
   const { plan } = rich;
   // same math as CoinDetail's pctFromEntry
   const pctFromEntry = (x: number) => fmtPct((x / plan.entry - 1) * 100, 1);
   const extras = rich.insights
     .filter((i) => CARD_EXTRA_IDS.has(i.id))
-    .map((i) => {
-      const m = i.detail.match(/×(\d+(?:\.\d+)?)/); // lift as printed on the detail page
-      return m ? `${i.title} ×${m[1]}` : i.title;
-    });
+    .map((i) => i.title);
   const oiTag = c.oiTrusted === false ? '(滯後)' : '';
+  const ew = entryWatchActive ? rich.entryWatch : undefined;
+  const bandLow = ew ? ew.support - 0.5 * ew.atr : 0;
+  const bandHigh = ew ? ew.support + 0.5 * ew.atr : 0;
 
   // [dropRank, line] in display order; rank 0 = never dropped, higher = cut first
   const lines: Array<[number, string]> = [
     [0, `${klass.title} — <b>${esc(c.symbol)}</b>/USDT · 強度 ${c.strength} · ${REGIME_LABEL[c.regime]}`],
-    [0, `價 ${fmtPrice(c.lastPrice)} · 進場 ${fmtPrice(plan.entry)}(${ENTRY_KIND_LABEL[plan.kind]})`],
+    [0, `價 ${fmtPrice(c.lastPrice)} · 原計劃參考位 ${fmtPrice(plan.entry)}(${ENTRY_KIND_LABEL[plan.kind]})`],
+    [0, ew ? `結構入場區 ${fmtPrice(bandLow)}–${fmtPrice(bandHigh)} · 狀態:⏳ 已開啟24h監察` : ''],
     [0, `TP1 ${fmtPrice(plan.tp1)}(${pctFromEntry(plan.tp1)}) · TP2 ${fmtPrice(plan.tp2)}(${pctFromEntry(plan.tp2)}) · TP3 ${fmtPrice(plan.tp3)}(${pctFromEntry(plan.tp3)})`],
     [0, `硬SL ${fmtPrice(plan.sl)}(${pctFromEntry(plan.sl)}) · Runner ${plan.runnerPct}%`],
     // B ladder footnote mirrors lib/paper LADDERS.B (M4 comparison arm, not the default)
@@ -222,36 +267,56 @@ export async function notifyClassEdges(
   prev: Set<string>,
   rich: Map<string, NotifyRich> | undefined,
   klass: NotifyClass,
-): Promise<Set<string>> {
+): Promise<NotifyRunResult> {
   const kv = readKvFile();
   const cfg = (kv['notify'] ?? {}) as Partial<NotifyCfg>;
   const cooldownMs = (cfg.cooldownH ?? 6) * 3600_000;
   const notified = (kv[klass.cdKey] ?? {}) as Record<string, number>;
   const now = Date.now();
   const curFb = new Set<string>();
+  const delivered: DeliveredSignal[] = [];
+  const watchable: DeliveredPush[] = [];
   let changed = false;
   for (const c of coins) {
     if (!klass.fires(c)) continue;
     curFb.add(c.symbol);
-    if (prev.has(c.symbol)) continue; // not a rising edge
-    if (now - (notified[c.symbol] ?? 0) < cooldownMs) continue;
-    notified[c.symbol] = now;
-    changed = true;
+    const lastSentAt = notified[c.symbol] ?? 0;
+    // A successful persistent signal is not a rising edge. A FAILED send has
+    // no cooldown timestamp and is allowed to retry on the next sweep even
+    // though the detector stayed on.
+    if (prev.has(c.symbol) && lastSentAt > 0) continue;
+    if (now - lastSentAt < cooldownMs) continue;
+    const attemptedAt = Date.now();
     let sent = false;
+    let deliveredAt = 0;
     let via: 'photo' | 'text' = 'text';
+    let messageId: number | undefined;
     const r = rich?.get(c.symbol);
+    const classPromoted = ENTRY_WATCH_PROMOTED[klass.id];
+    const hasWatchAnchor =
+      r?.entryWatch != null &&
+      r.entryWatch.support > 0 &&
+      r.entryWatch.atr > 0;
+    const followupEnabled =
+      classPromoted &&
+      cfg.entryWatchEnabled !== false &&
+      hasWatchAnchor;
     if (r) {
       try {
-        const caption = buildSignalCard(c, r, klass);
+        const caption = buildSignalCard(c, r, klass, followupEnabled);
         try {
           const png = renderCandlePng(r.candles, { entry: r.plan.entry });
-          sent = (await sendTelegramPhoto(cfg.telegramToken, cfg.telegramChatId, png, caption)).ok;
+          const out = await sendTelegramPhoto(cfg.telegramToken, cfg.telegramChatId, png, caption);
+          sent = out.ok;
+          messageId = out.messageId;
           if (sent) via = 'photo';
         } catch {
           // render threw — caption still carries the full card as text
         }
         if (!sent) {
-          sent = (await sendTelegram(cfg.telegramToken, cfg.telegramChatId, caption)).ok;
+          const out = await sendTelegram(cfg.telegramToken, cfg.telegramChatId, caption);
+          sent = out.ok;
+          messageId = out.messageId;
           if (sent) via = 'text';
         }
       } catch {
@@ -263,29 +328,88 @@ export async function notifyClassEdges(
         `${klass.title} — <b>${esc(c.symbol)}</b>/USDT\n` +
         `強度 ${c.strength} · 1h ${c.change1h.toFixed(2)}% · 價 ${c.lastPrice}\n` +
         klass.tail;
-      sent = (await sendTelegram(cfg.telegramToken, cfg.telegramChatId, text)).ok;
+      const out = await sendTelegram(cfg.telegramToken, cfg.telegramChatId, text);
+      sent = out.ok;
+      messageId = out.messageId;
       if (sent) via = 'text';
+    }
+    if (sent) {
+      deliveredAt = Date.now();
+      // Commit the first-stage cooldown immediately after Telegram accepts the
+      // message. A toast/render/log failure must never cause a duplicate card.
+      notified[c.symbol] = now;
+      changed = true;
+      writeKvKey(klass.cdKey, notified);
     }
     if (cfg.toast !== false) {
       await sendToast(`${klass.title} — ${c.symbol}/USDT`, `強度 ${c.strength} · 1h ${c.change1h.toFixed(2)}%`);
+    }
+    if (!sent) continue;
+
+    // This is the first timestamp at which the first-stage card is known to
+    // exist in Telegram. The card price stays the scan reference by explicit
+    // product choice; it is never renamed to an execution fill.
+    const sourceId = `${klass.id}:${c.symbol}:${deliveredAt}`;
+    const base: DeliveredSignal = {
+      id: sourceId,
+      sym: c.symbol,
+      cls: klass.id,
+      attemptedAt,
+      ts: deliveredAt,
+      deliveredAt,
+      px: c.lastPrice,
+      strength: c.strength,
+      via,
+      telegramMessageId: messageId,
+    };
+    delivered.push(base);
+
+    // Arming is driven directly by the confirmed Telegram result, never by
+    // whether the best-effort audit file happened to be writable.
+    if (hasWatchAnchor && r?.entryWatch) {
+      watchable.push({
+        ...base,
+        plan: r.plan,
+        support: r.entryWatch.support,
+        atr: r.entryWatch.atr,
+        followupEnabled,
+        telegramMessageId: messageId,
+      });
     }
     // notify log: only successful Telegram delivery belongs in the push monitor.
     // 訊號日誌 can show every card 1:1 (recordings-derived edges miss micro-scan
     // fires and non-RecCoin classes like 增倉突破). Own JSONL line type; every
     // reader skips it via `type`. Best-effort — logging must never kill notify.
     try {
-      if (!sent) continue;
       appendRecordLine(
         JSON.stringify({
           type: 'notify',
-          v: 1,
-          ts: now,
+          v: 3,
+          id: sourceId,
+          attemptedAt,
+          ts: deliveredAt,
+          deliveredAt,
           sym: c.symbol,
-          cls: klass.cdKey.split('-')[0], // 'fb' | 'rb' | future classes
+          cls: klass.id,
           px: c.lastPrice,
           strength: c.strength,
           via,
           delivered: true,
+          messageId,
+          ...(hasWatchAnchor && r?.entryWatch
+            ? {
+                watchId: entryWatchId(sourceId),
+                watch: {
+                  support: r.entryWatch.support,
+                  atr: r.entryWatch.atr,
+                  bandLow: r.entryWatch.support - 0.5 * r.entryWatch.atr,
+                  bandHigh: r.entryWatch.support + 0.5 * r.entryWatch.atr,
+                  invalidBelow: r.entryWatch.support - r.entryWatch.atr,
+                  expiresAt: deliveredAt + 24 * 3600_000,
+                  mode: followupEnabled ? 'active' : 'shadow',
+                },
+              }
+            : {}),
         }),
       );
     } catch {
@@ -298,7 +422,7 @@ export async function notifyClassEdges(
     for (const s in notified) if (now - notified[s] >= cooldownMs) delete notified[s];
     writeKvKey(klass.cdKey, notified);
   }
-  return curFb;
+  return { current: curFb, delivered, watchable };
 }
 
 // Back-compat ⚡ wrapper — same key, same copy, same behaviour as pre-S9.
@@ -306,6 +430,6 @@ export function notifyFlushBreakouts(
   coins: CoinLite[],
   prevFb: Set<string>,
   rich?: Map<string, NotifyRich>,
-): Promise<Set<string>> {
+): Promise<NotifyRunResult> {
   return notifyClassEdges(coins, prevFb, rich, CLASS_FB);
 }

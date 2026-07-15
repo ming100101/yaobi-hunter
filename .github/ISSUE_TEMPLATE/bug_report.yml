@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible Yaobi Hunter problem without sharing credentials.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never attach `kv.json`, a settings backup, Telegram Bot Token, Chat ID, or unredacted recording.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or commit hash.
+      placeholder: v0.1.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include expected behaviour and the exact visible result.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open...
+        2. Select...
+        3. See...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Safe evidence
+      description: Redacted screenshot or log excerpt. Remove all credentials and identifiers.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed Bot Tokens, Chat IDs, backups, and personal data.
+          required: true

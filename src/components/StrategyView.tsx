@@ -1,122 +1,87 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { parseRecordings } from '../lib/evalCore';
-import {
-  buildDailyReport,
-  sideStats,
-  type Fill,
-  type SideStats,
-  type StratDay,
-  type StratMode,
-  type StratTrade,
-} from '../lib/strategyReport';
-import { fmtClock, fmtPrice } from '../lib/format';
+import type { PortfolioPolicy, PromotionDecision, StrategyId } from '../types';
+import type { OutcomeSummary } from '../lib/strategyLab';
+import { paperBook, paperStats, type PaperState } from '../lib/paper';
 import BrandMark from './BrandMark';
 import NavTabs, { type AppTab } from './NavTabs';
 
 interface Props {
   tab: AppTab;
   onTab: (t: AppTab) => void;
+  paper: PaperState | null;
 }
 
-const DAY_MS = 24 * 3600 * 1000;
-const DAYS = 14;
-const MIN_SAMPLE = 20; // below this, a side's numbers are flagged 樣本不足
-
-const pad = (n: number) => String(n).padStart(2, '0');
-const ymd = (ms: number) => {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-const dayLabel = (ms: number) => {
-  const d = new Date(ms);
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-// ROI is in margin units (1.0 = +100%); show as a whole-percent, signed.
-const roiPct = (x: number) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(0)}%`;
-const dirCls = (x: number) => (x > 0 ? 'up' : x < 0 ? 'down' : 'muted');
-const nLabel = (l: number, s: number) => (l === s ? String(l || 0) : `${l}/${s}`);
-
-const FILL_LABEL: Record<Fill['kind'], string> = {
-  tp1: 'TP1',
-  tp2: 'TP2',
-  allout: '全出',
-  sl: 'SL',
-  eod: '收盤',
-  mark: '持倉中',
-};
-
-function StatCell({ s }: { s: SideStats }) {
-  if (s.n === 0) return <span className="muted">—</span>;
-  return (
-    <span className={`num ${dirCls(s.sum)}`} title={`${s.n} 單 · 勝率 ${(s.winRate * 100).toFixed(0)}%`}>
-      {roiPct(s.sum)}
-    </span>
-  );
+interface LabRow {
+  strategyId: StrategyId;
+  label: string;
+  candidates: number;
+  outcomes: number;
+  active: number;
+  summary: OutcomeSummary;
+  shadowGate: PromotionDecision;
+  paperGate: PromotionDecision;
+  latestTs: number;
 }
 
-function SummaryCard({ title, s }: { title: string; s: SideStats }) {
+interface LabSnapshot {
+  v: 1;
+  generatedAt: number;
+  rows: LabRow[];
+  policy: PortfolioPolicy;
+}
+
+const EMPTY_POLICY: PortfolioPolicy = {
+  id: 'balanced-v1', leverage: 1, riskPerTradePct: 0.5, maxPositionNotionalPct: 20,
+  maxOpenPositions: 4, maxOpenRiskPct: 2, dailyLossBlockPct: 1.5, drawdownLockPct: 10,
+};
+
+const fallbackRows: Array<Pick<LabRow, 'strategyId' | 'label'>> = [
+  { strategyId: 'boarding-b2-v1', label: 'B2 EMA 收復' },
+  { strategyId: 'boarding-b2-oi-v1', label: 'B2 + 合約數量 OI' },
+  { strategyId: 'ema20-reclaim-control-v1', label: '普通 EMA20 收復對照' },
+  { strategyId: 'organic-spot-v0', label: '現貨帶動 proxy' },
+  { strategyId: 'spot-led-v1', label: '真實現貨帶動' },
+  { strategyId: 'virgin-v2', label: '🚀 處女增倉 V2' },
+  { strategyId: 'rebuild-r1', label: '📈 重建增倉 R1' },
+  { strategyId: 'flush-breakout', label: '⚡ 縮倉突破' },
+];
+
+const pct = (v: number, digits = 1) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(digits)}%`;
+const tone = (v: number) => (v > 0 ? 'up' : v < 0 ? 'down' : 'muted');
+
+function stateFor(row: LabRow): { text: string; cls: string } {
+  if (row.paperGate.pass) return { text: '可選通知', cls: 'verified' };
+  if (row.shadowGate.pass) return { text: '模擬合格', cls: 'paper' };
+  if (row.outcomes >= 100) return { text: '未通過', cls: 'failed' };
+  return { text: '收集中', cls: 'collecting' };
+}
+
+function reasonFor(row: LabRow): string {
+  if (row.paperGate.pass) return '完整研究及模擬 gate 已通過；通知仍要在設定頁由你親自開啟。';
+  if (row.shadowGate.pass) return '研究 gate 已通過，正以 balanced-v1 累積正式模擬盤證據。';
+  const reasons = row.shadowGate.reasons.slice(0, 2);
+  return reasons.length ? `而家唔入場：${reasons.join('；')}` : '而家唔入場：資料仍未完整。';
+}
+
+function Metric({ label, value, note, valueTone = 0 }: { label: string; value: string; note?: string; valueTone?: number }) {
   return (
-    <div className="card strat-summary">
-      <div className="strat-sum-title">{title}</div>
-      <div className={`strat-sum-val num ${s.n ? dirCls(s.sum) : 'muted'}`}>{s.n ? roiPct(s.sum) : '—'}</div>
-      <div className="strat-sum-sub muted">{s.n ? `${s.n} 單 · 勝率 ${(s.winRate * 100).toFixed(0)}%` : '無訊號'}</div>
+    <div className="strategy-metric">
+      <div className="strategy-metric-label">{label}</div>
+      <div className={`strategy-metric-value num ${tone(valueTone)}`}>{value}</div>
+      {note && <div className="strategy-metric-sub muted">{note}</div>}
     </div>
   );
 }
 
-function TradeBlock({ label, trades, skipped }: { label: string; trades: StratTrade[]; skipped: number }) {
-  if (trades.length === 0 && skipped === 0) return null;
-  return (
-    <div className="strat-detail-block">
-      <div className="strat-detail-head">{label}</div>
-      {trades.map((t, i) => {
-        const last = t.fills[t.fills.length - 1];
-        return (
-          <div key={`${t.sym}-${t.entryTs}-${i}`} className="strat-detail-row">
-            <span className="muted">{fmtClock(t.entryTs)}→{last ? fmtClock(last.ts) : '—'}</span>
-            <span className="sym">{t.sym}</span>
-            <span className="num muted">{fmtPrice(t.entry)}</span>
-            <span className="strat-fills">
-              {t.fills.map((f, k) => (
-                <span key={k} className={`strat-fill ${f.kind}`}>{FILL_LABEL[f.kind]}</span>
-              ))}
-            </span>
-            <span className={`num ${dirCls(t.roi)}`}>{roiPct(t.roi)}</span>
-          </div>
-        );
-      })}
-      {skipped > 0 && <div className="strat-skip muted">跳過 {skipped}(無出場價)</div>}
-    </div>
-  );
-}
-
-export default function StrategyView({ tab, onTab }: Props) {
-  // both exit modes are built from the same parse so the toggle swaps instantly
-  const [reports, setReports] = useState<Record<StratMode, StratDay[]> | null>(null);
-  const [mode, setMode] = useState<StratMode>('ladder');
-  const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const days = reports ? reports[mode] : null;
+export default function StrategyView({ tab, onTab, paper }: Props) {
+  const [snapshot, setSnapshot] = useState<LabSnapshot | null>(null);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
   const load = useCallback(async () => {
     try {
-      const now = Date.now();
-      const res = await fetch(`/recordings?from=${ymd(now - DAYS * DAY_MS)}&to=${ymd(now)}`);
-      if (!res.ok) {
-        setStatus('empty');
-        setReports({ ladder: [], allout: [] });
-        return;
-      }
-      const idx = parseRecordings(await res.text());
-      if (idx.slots.length === 0) {
-        setStatus('empty');
-        setReports({ ladder: [], allout: [] });
-        return;
-      }
-      setReports({
-        ladder: buildDailyReport(idx, DAYS, now, 'ladder'),
-        allout: buildDailyReport(idx, DAYS, now, 'allout'),
-      });
+      const res = await fetch('/strategy-lab', { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      setSnapshot(await res.json());
       setStatus('ready');
     } catch {
       setStatus('error');
@@ -125,183 +90,112 @@ export default function StrategyView({ tab, onTab }: Props) {
 
   useEffect(() => {
     void load();
+    const id = window.setInterval(() => void load(), 60_000);
+    return () => window.clearInterval(id);
   }, [load]);
 
-  // no cron: re-derive when the local date rolls over (yesterday freezes, a fresh
-  // 今日 row appears) — effectively「00:00 更新」.
-  useEffect(() => {
-    let lastDay = new Date().getDate();
-    const id = setInterval(() => {
-      const d = new Date().getDate();
-      if (d !== lastDay) {
-        lastDay = d;
-        void load();
-      }
-    }, 60_000);
-    return () => clearInterval(id);
-  }, [load]);
-
-  const yesterday = useMemo(() => {
-    if (!days) return null;
-    const yStart = new Date(Date.now() - DAY_MS).setHours(0, 0, 0, 0);
-    return days.find((d) => d.dayStartMs === yStart) ?? null;
-  }, [days]);
-
-  const totals = useMemo(() => {
-    const all = days ?? [];
-    return {
-      fbLong: all.flatMap((d) => d.fb.long),
-      fbShort: all.flatMap((d) => d.fb.short),
-      s70Long: all.flatMap((d) => d.s70.long),
-      s70Short: all.flatMap((d) => d.s70.short),
-    };
-  }, [days]);
-
-  const emptySide = { long: [] as StratTrade[], short: [] as StratTrade[], skippedLong: 0, skippedShort: 0 };
-  const yFb = yesterday?.fb ?? emptySide;
-  const yS70 = yesterday?.s70 ?? emptySide;
+  const rows = useMemo(() => {
+    const byId = new Map((snapshot?.rows ?? []).map((x) => [x.strategyId, x]));
+    return fallbackRows.map((base) => byId.get(base.strategyId)).filter(Boolean) as LabRow[];
+  }, [snapshot]);
+  const active = rows.reduce((a, x) => a + x.active, 0);
+  const completeOutcomes = rows.reduce((a, x) => a + x.summary.trades, 0);
+  const policy = snapshot?.policy ?? EMPTY_POLICY;
+  const oldBook = paper ? paperBook(paper, 'confirmed') : null;
+  const oldStats = oldBook ? paperStats(oldBook) : null;
 
   return (
-    <div className="page">
+    <div className="page strategy-page">
       <div className="topbar">
         <div className="brand">
           <BrandMark />
           <div>
-            <div className="brand-name">妖幣獵手</div>
-            <div className="brand-sub">策略對照 · 20x 全跟正反手(透明鏡子,非投資建議)</div>
+            <div className="brand-name">策略實驗室</div>
+            <div className="brand-sub">先證明有優勢，再用受控風險模擬</div>
           </div>
         </div>
         <NavTabs tab={tab} onTab={onTab} />
       </div>
 
-      {status === 'loading' && (
-        <div className="card strat-msg">
-          <div className="spinner" /> 計算中…
-        </div>
-      )}
-      {status === 'error' && <div className="card strat-msg">讀取記錄失敗 — 需喺 dev 伺服器或 exe 內執行。</div>}
-      {status === 'empty' && (
-        <div className="card strat-msg">
-          未有記錄數據 — 行 <code>npm run recorder</code>(見 README「24/7 收集」)開始累積,tab 就會有數。
-        </div>
-      )}
-
-      {status === 'ready' && days && (
-        <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-            <button type="button" className={`fb-toggle${mode === 'ladder' ? ' on' : ''}`} onClick={() => setMode('ladder')}>
-              階梯出場 TP1/TP2
-            </button>
-            <button type="button" className={`fb-toggle${mode === 'allout' ? ' on' : ''}`} onClick={() => setMode('allout')}>
-              +200% 全出(首訊號)
-            </button>
+      <section className="card strategy-live-card" data-testid="strategy-risk-summary">
+        <div className="strategy-section-head">
+          <div>
+            <div className="strategy-kicker">balanced-v1 資金防線</div>
+            <h2>唔靠槓桿，先保住複利能力</h2>
           </div>
-          <div className="strat-summary-grid">
-            <SummaryCard title="尋日 ⚡ 多" s={sideStats(yFb.long)} />
-            <SummaryCard title="尋日 ⚡ 空" s={sideStats(yFb.short)} />
-            <SummaryCard title="尋日 >70 多" s={sideStats(yS70.long)} />
-            <SummaryCard title="尋日 >70 空" s={sideStats(yS70.short)} />
-          </div>
+          <span className="chip strategy-policy">影子＋模擬盤 · 不落真單</span>
+        </div>
+        <div className="strategy-metric-grid">
+          <Metric label="每單最多風險" value={`${policy.riskPerTradePct}%`} note={`單幣上限 ${policy.maxPositionNotionalPct}%`} />
+          <Metric label="組合開放風險" value={`0 / ${policy.maxOpenRiskPct}%`} note={`最多 ${policy.maxOpenPositions} 個持倉`} />
+          <Metric label="今日損失停止線" value={`−${policy.dailyLossBlockPct}%`} note="觸發後等下一個 UTC 日" />
+          <Metric label="回撤鎖" value={`−${policy.drawdownLockPct}%`} note="鎖定 policy，等待研究覆核" />
+        </div>
+        <div className="strategy-live-note muted">
+          現時通過 gate 嘅新策略持倉：0。未通過研究 gate 嘅 B2、現貨帶動、🚀、📈、⚡ 絕不會混入 combined portfolio。
+        </div>
+      </section>
 
-          <div className="card table-card">
-            <div className="strat-head">
-              <span>日期</span>
-              <span className="ta-r">⚡ n</span>
-              <span className="ta-r">⚡ 多</span>
-              <span className="ta-r">⚡ 空</span>
-              <span className="ta-r">&gt;70 n</span>
-              <span className="ta-r">&gt;70 多</span>
-              <span className="ta-r">&gt;70 空</span>
-            </div>
-            {days.map((d) => {
-              const fbL = sideStats(d.fb.long);
-              const fbS = sideStats(d.fb.short);
-              const sL = sideStats(d.s70.long);
-              const sS = sideStats(d.s70.short);
-              const open = expanded === d.dayStartMs;
+      <section className="card strategy-focus-card">
+        <div className="strategy-section-head">
+          <div>
+            <div className="strategy-kicker">因果式 forward evidence</div>
+            <h2>每條策略獨立計數</h2>
+          </div>
+          <span className="chip strategy-policy">{active} 個等待 outcome · {completeOutcomes} 個完整結果</span>
+        </div>
+
+        {status === 'loading' && <div className="strat-msg"><div className="spinner" /> 載入研究資料…</div>}
+        {status === 'error' && <div className="strat-msg">暫時讀唔到策略摘要；recorder 會在下一次新事件後重建。</div>}
+        {status === 'ready' && !rows.length && (
+          <div className="strategy-empty-state">1H market store 正在分批建立。B2 未 fire 前保持零交易，唔會補歷史價扮成交。</div>
+        )}
+        {rows.length > 0 && (
+          <div className="lab-strategy-list">
+            {rows.map((row) => {
+              const state = stateFor(row);
               return (
-                <div key={d.dayStartMs}>
-                  <div
-                    className={`strat-row${open ? ' open' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setExpanded(open ? null : d.dayStartMs)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setExpanded(open ? null : d.dayStartMs);
-                      }
-                    }}
-                  >
-                    <span className="strat-date">
-                      {dayLabel(d.dayStartMs)}
-                      {!d.final && <span className="chip mini strat-live">進行中</span>}
-                    </span>
-                    <span className="ta-r num">{nLabel(d.fb.long.length, d.fb.short.length)}</span>
-                    <span className="ta-r"><StatCell s={fbL} /></span>
-                    <span className="ta-r"><StatCell s={fbS} /></span>
-                    <span className="ta-r num">{nLabel(d.s70.long.length, d.s70.short.length)}</span>
-                    <span className="ta-r"><StatCell s={sL} /></span>
-                    <span className="ta-r"><StatCell s={sS} /></span>
-                  </div>
-                  {open && (
-                    <div className="strat-detail">
-                      <TradeBlock label="⚡ 多" trades={d.fb.long} skipped={d.fb.skippedLong} />
-                      <TradeBlock label="⚡ 空" trades={d.fb.short} skipped={d.fb.skippedShort} />
-                      <TradeBlock label=">70 多" trades={d.s70.long} skipped={d.s70.skippedLong} />
-                      <TradeBlock label=">70 空" trades={d.s70.short} skipped={d.s70.skippedShort} />
-                      {d.fb.long.length + d.fb.short.length + d.s70.long.length + d.s70.short.length === 0 && (
-                        <div className="muted strat-skip">當日無成交(訊號稀少或記錄有 gap 屬正常)。</div>
-                      )}
+                <article className="lab-strategy-row" key={row.strategyId} data-strategy={row.strategyId}>
+                  <div className="lab-strategy-main">
+                    <div className="lab-strategy-title">
+                      <strong>{row.label}</strong>
+                      <span className={`lab-status ${state.cls}`}>{state.text}</span>
                     </div>
-                  )}
-                </div>
+                    <div className="lab-no-entry">{reasonFor(row)}</div>
+                  </div>
+                  <div className="lab-stat">
+                    <span>成本後期望值</span>
+                    <b className={`num ${tone(row.summary.netMean)}`}>{row.summary.trades ? pct(row.summary.netMean) : '等待'}</b>
+                  </div>
+                  <div className="lab-stat">
+                    <span>最大回撤</span>
+                    <b className="num">{row.summary.trades ? `${(row.summary.maxDrawdown * 100).toFixed(1)}%` : '—'}</b>
+                  </div>
+                  <div className="lab-stat">
+                    <span>完整樣本</span>
+                    <b className="num">{row.summary.trades}</b>
+                  </div>
+                  <div className="lab-stat">
+                    <span>資料完整度</span>
+                    <b className="num">{row.outcomes ? `${(row.summary.coverage * 100).toFixed(0)}%` : '—'}</b>
+                  </div>
+                </article>
               );
             })}
-            {days.length === 0 && <div className="sr-empty muted">近 {DAYS} 日未有訊號記錄。</div>}
           </div>
+        )}
+      </section>
 
-          <div className="card strat-footer">
-            <div className="strat-foot-head">近 {DAYS} 日合計(20x、等權每注、ROI = 保證金倍數)</div>
-            <div className="strat-foot-grid">
-              {([
-                ['⚡ 多', totals.fbLong],
-                ['⚡ 空', totals.fbShort],
-                ['>70 多', totals.s70Long],
-                ['>70 空', totals.s70Short],
-              ] as [string, StratTrade[]][]).map(([label, trades]) => {
-                const s = sideStats(trades);
-                return (
-                  <div key={label} className="strat-foot-cell">
-                    <span className="muted">{label}</span>
-                    <StatCell s={s} />
-                    {s.n > 0 && s.n < MIN_SAMPLE && <span className="chip mini strat-thin">樣本不足</span>}
-                  </div>
-                );
-              })}
-            </div>
-            <div className="strat-method muted">
-              {mode === 'ladder'
-                ? '20x 槓桿:幣價 ±5% = 保證金 ±100%。TP1(幣 +5%)出本金、TP2(+10%)出餘半、SL(−5%)清零、餘倉日終平。'
-                : '20x 槓桿:幣價 ±10% = 保證金 +200% 一次全出;SL(幣 −5%)= 爆倉式清零;每幣每日只入第一個訊號(首訊號 = 開倉時點,SL 後不重入);未觸發嘅倉日終平。'}
-              以 15 分鐘記錄價觸發、SL 優先(偏保守);未計費用/資金費率/爆倉緩衝;穩定幣剔除;正反手各自行路徑(參數鏡像但結果唔對稱)。非投資建議。
-            </div>
-          </div>
-
-          <div className="card strat-footer">
-            <div className="strat-foot-head">參考:老詹倉位分級 + 風控框架(試用群 2026-07-06,個人研究用)</div>
-            <div className="strat-method">
-              上車準備 → 小倉 · 接人 → 補倉小倉 · 蓄力加倉 → 加倉 · 跑車/火箭加倉 → 正常倉
-            </div>
-            <div className="strat-method muted">
-              風控:妖幣常等啟動/埋伏/深洗,遇 BTC/ETH 急跌會一齊踩,所以止損放遠 — 低槓桿逐倉(3-5x)以爆倉價作天然停損,用倉位大小控風險金額;勝率守五成以上靠
-              25-50%+ 行程食大魚。變體:全部設 8-10% 全止盈食第一段(=模擬盤 C 梯,2026-07-06 起與 A/B
-              梯同場對照;注意 +9%/−20% 要勝率 &gt;69% 先打和 — 佢「勝率更高」嘅講法由對照帳答)。大盤急跌時降倉、放慢進場。參考資訊非本 app
-              驗證訊號,非投資建議。
-            </div>
-          </div>
-        </>
-      )}
+      <details className="card strategy-details">
+        <summary>進階／舊模擬盤對照</summary>
+        <div className="strategy-details-body">
+          <p>舊 confirmed、A/B/C 同 20x 記錄仍然保留，但唔再用作策略排名，亦唔會混入 balanced-v1。</p>
+          <p className="muted">
+            舊 confirmed book：{oldStats ? `${oldStats.openCount} 個持倉、${oldStats.closedCount} 個已完成` : '未載入'}。
+            新研究成交固定使用訊號後下一根完整原生 15m open；45 分鐘內缺資料就標示失效，唔會補價。
+          </p>
+        </div>
+      </details>
     </div>
   );
 }

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0716" />
+    <meta
+      name="description"
+      content="妖幣獵手 Yaobi Hunter：Windows 全市場加密貨幣異動掃描、Telegram 推送監察與證據優先策略實驗室。"
+    />
+    <meta property="og:title" content="妖幣獵手 · Yaobi Hunter" />
+    <meta
+      property="og:description"
+      content="全市場掃描、TG 卡價追蹤、15 分鐘圖表與本機策略研究。Public Beta，不會自動落單。"
+    />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>妖幣獵手 · Yaobi Hunter</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要內容</a>
+
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="妖幣獵手首頁">
+        <img src="./favicon.svg" alt="" width="34" height="34" />
+        <span>妖幣獵手</span>
+      </a>
+      <nav aria-label="主要導覽">
+        <a href="#features">功能</a>
+        <a href="#safety">安全</a>
+        <a href="#start">開始</a>
+        <a href="https://github.com/ming100101/yaobi-hunter">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="live-dot"></span> Windows Public Beta</div>
+          <h1>早啲睇見異動，<br />再用數據決定。</h1>
+          <p class="lead">
+            Yaobi Hunter 掃描 Binance USDT 永續市場，將價格、OI、成交量、funding
+            與現貨流向整理成易讀訊號。成功 Telegram 推送、後續走勢與策略證據都留在同一個本機 App。
+          </p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/ming100101/yaobi-hunter/releases/latest">
+              下載 Windows Beta
+            </a>
+            <a class="button secondary" href="https://github.com/ming100101/yaobi-hunter">
+              查看原始碼
+            </a>
+          </div>
+          <ul class="trust-row" aria-label="產品重點">
+            <li>不需要交易所 API key</li>
+            <li>不會自動落單</li>
+            <li>資料保存在本機</li>
+          </ul>
+        </div>
+
+        <div class="app-preview" aria-label="妖幣獵手介面預覽">
+          <div class="window-bar">
+            <span class="window-title">妖幣獵手 · 15 分鐘掃描</span>
+            <span class="window-status">掃描中 138 / 312</span>
+          </div>
+          <div class="preview-tabs" aria-hidden="true">
+            <span class="active">掃描</span><span>推送</span><span>策略</span><span>記錄</span>
+          </div>
+          <div class="preview-summary">
+            <div><small>市場狀態</small><strong>輪動</strong></div>
+            <div><small>今日 TG</small><strong>12</strong></div>
+            <div><small>活躍監察</small><strong>4</strong></div>
+          </div>
+          <div class="coin-list">
+            <div class="coin-row heading"><span>幣種／訊號</span><span>24H</span><span>強度</span><span>OI 4H</span></div>
+            <div class="coin-row"><span><b>THE</b><em class="badge flash">⚡ 縮</em></span><span class="spark up">▁▂▂▃▄▅▇▆</span><strong>82</strong><span class="positive">+8.4%</span></div>
+            <div class="coin-row"><span><b>THETA</b><em class="badge build">📈 增</em></span><span class="spark up">▂▂▃▃▄▆▅▇</span><strong>77</strong><span class="positive">+5.1%</span></div>
+            <div class="coin-row"><span><b>SAFE</b><em class="badge expand">🚀 擴</em></span><span class="spark down">▆▅▅▄▃▂▃▁</span><strong>71</strong><span class="negative">−2.7%</span></div>
+            <div class="coin-row"><span><b>SAPIEN</b><em class="badge watch">等待</em></span><span class="spark up">▁▁▂▃▃▄▆▇</span><strong>68</strong><span class="positive">+3.8%</span></div>
+          </div>
+          <div class="preview-foot">
+            <span>每個成功 TG 卡都有可追溯時間與卡價</span>
+            <span class="pulse">● 本機運行</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="section-heading">
+          <span class="kicker">一個 App，完整保留前因後果</span>
+          <h2>由發現異動，到驗證訊號。</h2>
+          <p>唔只顯示一粒 badge。每次推送、等待、到價、失效同策略結果都有清楚來源。</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card featured">
+            <span class="icon" aria-hidden="true">⌁</span>
+            <h3>全市場 15 分鐘掃描</h3>
+            <p>分批覆蓋可交易 USDT 永續幣，以價格、OI、成交量、funding 與市場 regime 整理異動。</p>
+            <div class="signal-chips"><span>⚡ 縮</span><span>📈 增</span><span>🚀 擴</span></div>
+          </article>
+          <article class="feature-card">
+            <span class="icon" aria-hidden="true">↗</span>
+            <h3>TG 推送監察</h3>
+            <p>只收錄 Telegram 確認送達的卡片。顯示 TG 卡價、24H 縮圖、距離與後續狀態。</p>
+          </article>
+          <article class="feature-card">
+            <span class="icon" aria-hidden="true">◎</span>
+            <h3>多週期 Coin Detail</h3>
+            <p>5m、15m、1H、4H 圖表配合 EMA、布林帶、成交量與清楚的 TG／確認盤標記。</p>
+          </article>
+          <article class="feature-card">
+            <span class="icon" aria-hidden="true">✓</span>
+            <h3>證據優先策略實驗室</h3>
+            <p>顯示樣本、成本後期望值、回撤、資料完整度與 promotion gate，不用單次爆升扮成穩定優勢。</p>
+          </article>
+          <article class="feature-card">
+            <span class="icon" aria-hidden="true">▣</span>
+            <h3>本機記錄與回放</h3>
+            <p>完成掃描、成功推送、shadow watch 與模擬盤以 backward-readable 記錄保存在你的電腦。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section split-section" id="safety">
+        <div class="safety-copy">
+          <span class="kicker">研究工具，不是落單機械人</span>
+          <h2>先保護使用者，再談訊號。</h2>
+          <p>
+            Beta 版不要求 Binance API key，亦沒有交易所落單功能。實驗策略只會進入 shadow
+            或模擬盤，未過證據門檻就不會包裝成「已驗證」。
+          </p>
+          <a class="text-link" href="https://github.com/ming100101/yaobi-hunter/blob/master/DISCLAIMER.md">閱讀風險聲明 →</a>
+        </div>
+        <div class="safety-list">
+          <div><span>01</span><p><strong>本機優先</strong>設定、記錄與策略證據放在 `%LOCALAPPDATA%\YaobiHunter`。</p></div>
+          <div><span>02</span><p><strong>訊號有來源</strong>TG 卡價不是成交價，確認盤與舊紙盤分開呈現。</p></div>
+          <div><span>03</span><p><strong>失敗也保留</strong>資料不足、失效、過期與走車不會被靜默刪走。</p></div>
+          <div><span>04</span><p><strong>沒有盈利承諾</strong>所有歷史與模擬結果都可能無法重現。</p></div>
+        </div>
+      </section>
+
+      <section class="section start-section" id="start">
+        <div class="section-heading">
+          <span class="kicker">三步開始</span>
+          <h2>下載、解壓、開啟。</h2>
+        </div>
+        <ol class="steps">
+          <li><span>1</span><div><strong>下載最新版 ZIP</strong><p>只使用官方 GitHub Releases，並對照 SHA-256。</p></div></li>
+          <li><span>2</span><div><strong>解壓後開啟 EXE</strong><p>App 會在本機瀏覽器視窗打開。首次執行可能見到 SmartScreen。</p></div></li>
+          <li><span>3</span><div><strong>自行選擇 Telegram</strong><p>通知是可選功能；Bot Token 與 Chat ID 只保存在你的電腦。</p></div></li>
+        </ol>
+        <div class="download-panel">
+          <div>
+            <small>Windows 10 / 11 · x64</small>
+            <strong>Yaobi Hunter Public Beta</strong>
+            <p>免費、開放原始碼。使用前請閱讀 README-FIRST、私隱說明與風險聲明。</p>
+          </div>
+          <a class="button primary" href="https://github.com/ming100101/yaobi-hunter/releases/latest">前往下載</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div><strong>妖幣獵手 · Yaobi Hunter</strong><p>Evidence before excitement.</p></div>
+      <div class="footer-links">
+        <a href="https://github.com/ming100101/yaobi-hunter">GitHub</a>
+        <a href="https://github.com/ming100101/yaobi-hunter/blob/master/PRIVACY.md">私隱</a>
+        <a href="https://github.com/ming100101/yaobi-hunter/blob/master/SECURITY.md">安全</a>
+        <a href="https://github.com/ming100101/yaobi-hunter/issues">問題回報</a>
+      </div>
+      <p class="footer-warning">加密貨幣及衍生品屬高風險。本工具不是投資建議，亦不保證盈利。</p>
+    </footer>
+  </body>
+</html>

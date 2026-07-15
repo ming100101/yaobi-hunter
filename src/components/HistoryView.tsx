@@ -20,10 +20,23 @@ import {
 import { recCoinField, type RecCoin } from '../lib/recording';
 import { fmtClock, fmtMoney, fmtPct, fmtPrice } from '../lib/format';
 import { cssVar } from '../lib/cssVar';
+import {
+  evaluateSignalOutcome,
+  parseDeliveredSignals,
+  type SignalNotifyEvent,
+} from '../lib/signalEvents';
 import { kvGet } from '../data/cache';
-import { paperBlotter, paperStats, type BlotterPos, type PaperArm, type PaperState } from '../lib/paper';
+import {
+  paperBlotter,
+  paperBook,
+  paperStats,
+  type BlotterPos,
+  type PaperBookId,
+  type PaperState,
+} from '../lib/paper';
 import BrandMark from './BrandMark';
 import NavTabs, { type AppTab } from './NavTabs';
+import TgOutcomeSection from './TgOutcomeSection';
 
 // M2 記錄 tab: 訊號日誌 + lift 表 (session 1) + 時間軸回放 / 模擬盤 equity curve /
 // replay 重跑 (session 2) — every number flows through the SAME evalCore the CLI
@@ -119,56 +132,33 @@ interface JournalRow {
   mfe24: number | null;
 }
 
-// Sender-side notify log lines ({type:'notify'}, written by notifyClassEdges) —
-// the authoritative record of what went to Telegram. Parsed separately because
-// evalCore's parseRecordings only keeps scan rows.
-interface NotifyLine {
-  ts: number;
-  sym: string;
-  cls: string; // 'fb' | 'rb' | ...
-  px: number;
-  strength: number;
-}
-const NOTIFY_LABEL: Record<string, string> = { fb: '⚡', rb: '📈' };
+const NOTIFY_LABEL: Record<string, string> = { fb: '⚡', rb: '📈', vg: '🚀' };
 const SLOT_MS_15 = 15 * 60 * 1000;
 
-function parseNotifyLines(text: string): NotifyLine[] {
-  const out: NotifyLine[] = [];
-  for (const line of text.split('\n')) {
-    if (!line.includes('"type":"notify"')) continue;
-    try {
-      const o = JSON.parse(line);
-      if (o.type === 'notify' && o.delivered !== false && o.sym && Number.isFinite(o.ts)) out.push(o);
-    } catch {
-      /* skip malformed */
-    }
-  }
-  return out;
-}
-
-function buildJournal(idx: RecIndex, notifies: NotifyLine[]): JournalRow[] {
+function buildJournal(idx: RecIndex, notifies: SignalNotifyEvent[]): JournalRow[] {
   const states = evalStates(idx).slice(0, 2); // ⚡ flushBreakout, 蓄 earlyAccum
   const label: Record<string, string> = { '⚡ flushBreakout': '⚡', '蓄 earlyAccum': '蓄' };
   // (sym, slot) → notify line, so edge rows can wear the TG chip and TG-only
   // fires (micro-scan ⚡, 增倉突破 — invisible to RecCoin edges) get own rows
-  const bySlot = new Map<string, NotifyLine>();
+  const bySlot = new Map<string, SignalNotifyEvent>();
   for (const n of notifies) bySlot.set(`${n.sym}|${Math.floor(n.ts / SLOT_MS_15)}`, n);
   const rows: JournalRow[] = [];
-  const covered = new Set<string>();
   for (const st of states) {
     for (const e of risingEdges(idx, st.on)) {
       const f1 = forward(idx, e.sym, e.slot, 4); // +1h (4 slots)
       const f4 = forward(idx, e.sym, e.slot, 16); // +4h
       const f24 = forward(idx, e.sym, e.slot, 96); // +24h
       const key = `${e.sym}|${e.slot}`;
-      if (bySlot.has(key)) covered.add(key);
+      // A delivered TG row is anchored to its own success time/card price and
+      // therefore replaces the detector-only row for the same 15m slot.
+      if (bySlot.has(key)) continue;
       rows.push({
         sym: e.sym,
         slot: e.slot,
         ts: e.ts,
         price: e.price,
         label: label[st.key] ?? st.key,
-        tg: bySlot.has(key),
+        tg: false,
         r1: f1?.ret ?? null,
         r4: f4?.ret ?? null,
         r24: f24?.ret ?? null,
@@ -176,15 +166,13 @@ function buildJournal(idx: RecIndex, notifies: NotifyLine[]): JournalRow[] {
       });
     }
   }
-  // TG-only notifications (no matching RecCoin edge row)
+  // Every delivered TG card gets its own authoritative row. Outcome paths use
+  // the shared strict evaluator, never the same-slot scan price.
   for (const n of notifies) {
     const slot = Math.floor(n.ts / SLOT_MS_15);
-    const key = `${n.sym}|${slot}`;
-    if (covered.has(key)) continue;
-    covered.add(key);
-    const f1 = forward(idx, n.sym, slot, 4);
-    const f4 = forward(idx, n.sym, slot, 16);
-    const f24 = forward(idx, n.sym, slot, 96);
+    const f1 = evaluateSignalOutcome(idx, n, 4, 'tg-card');
+    const f4 = evaluateSignalOutcome(idx, n, 16, 'tg-card');
+    const f24 = evaluateSignalOutcome(idx, n, 96, 'tg-card');
     rows.push({
       sym: n.sym,
       slot,
@@ -192,13 +180,13 @@ function buildJournal(idx: RecIndex, notifies: NotifyLine[]): JournalRow[] {
       price: n.px,
       label: NOTIFY_LABEL[n.cls] ?? n.cls,
       tg: true,
-      r1: f1?.ret ?? null,
-      r4: f4?.ret ?? null,
-      r24: f24?.ret ?? null,
-      mfe24: f24?.mfe ?? null,
+      r1: f1.status === 'complete' ? f1.ret ?? null : null,
+      r4: f4.status === 'complete' ? f4.ret ?? null : null,
+      r24: f24.status === 'complete' ? f24.ret ?? null : null,
+      mfe24: f24.status === 'complete' ? f24.mfe ?? null : null,
     });
   }
-  return rows.sort((a, b) => b.slot - a.slot); // newest first
+  return rows.sort((a, b) => b.ts - a.ts); // newest first
 }
 
 const RetCell = ({ x }: { x: number | null }) =>
@@ -530,7 +518,8 @@ function EquityCurve({ curve, startEquity }: { curve: [number, number][]; startE
 }
 
 // ---- 模擬盤交易簿 — position-grouped paper fills (lib/paper.paperBlotter) ----
-const ARM_LABEL: Record<PaperArm, string> = {
+const ARM_LABEL: Record<PaperBookId, string> = {
+  confirmed: '確認盤(現行)',
   A: 'A 淺梯(現行)',
   B: 'B 老詹梯',
   C: 'C 全止盈',
@@ -542,23 +531,19 @@ const fmtDayClock = (ms: number) => {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-function armBook(p: PaperState, arm: PaperArm): PaperState | null {
-  return arm === 'A' ? p : arm === 'B' ? (p.armB ?? null) : (p.armC ?? null);
-}
-
 // raw per-fill CSV — the objective export (one row per fill, entry rows included)
 function exportBlotterCsv(paper: PaperState): void {
-  const lines = ['arm,sym,open_time,entry,action,fill_time,price,frac_of_position,pnl_usd'];
+  const lines = ['book,sym,signal_time,signal_price,open_time,entry,entry_slippage_pct,entry_policy,action,fill_time,price,frac_of_position,pnl_usd'];
   const iso = (ms: number) => new Date(ms).toISOString();
-  for (const arm of ['A', 'B', 'C'] as PaperArm[]) {
-    const book = armBook(paper, arm);
+  for (const arm of ['confirmed', 'A', 'B', 'C'] as PaperBookId[]) {
+    const book = paperBook(paper, arm);
     if (!book) continue;
     for (const pos of paperBlotter(book)) {
       lines.push(
-        `${arm},${pos.sym},${iso(pos.openTs)},${pos.entry},open,${iso(pos.openTs)},${pos.entry},1,${pos.pnl - pos.fills.reduce((s, f) => s + f.pnl, 0)}`,
+        `${arm},${pos.sym},${pos.signalTs ? iso(pos.signalTs) : ''},${pos.signalPx ?? ''},${iso(pos.openTs)},${pos.entry},${pos.entrySlippagePct ?? ''},${pos.entryPolicyId ?? ''},open,${iso(pos.openTs)},${pos.entry},1,${pos.pnl - pos.fills.reduce((s, f) => s + f.pnl, 0)}`,
       );
       for (const f of pos.fills)
-        lines.push(`${arm},${pos.sym},${iso(pos.openTs)},${pos.entry},${f.action},${iso(f.ts)},${f.px},${f.frac},${f.pnl}`);
+        lines.push(`${arm},${pos.sym},${pos.signalTs ? iso(pos.signalTs) : ''},${pos.signalPx ?? ''},${iso(pos.openTs)},${pos.entry},${pos.entrySlippagePct ?? ''},${pos.entryPolicyId ?? ''},${f.action},${iso(f.ts)},${f.px},${f.frac},${f.pnl}`);
     }
   }
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
@@ -571,7 +556,7 @@ function exportBlotterCsv(paper: PaperState): void {
 
 function PaperBlotterSection({ onSelect }: { onSelect: (s: string) => void }) {
   const [paper, setPaper] = useState<PaperState | null>(null);
-  const [arm, setArm] = useState<PaperArm>('A');
+  const [arm, setArm] = useState<PaperBookId>('confirmed');
   useEffect(() => {
     let cancelled = false;
     void kvGet<PaperState>('paper-state').then((p) => {
@@ -583,20 +568,20 @@ function PaperBlotterSection({ onSelect }: { onSelect: (s: string) => void }) {
   }, []);
   const rows = useMemo(() => {
     if (!paper) return [] as BlotterPos[];
-    const book = armBook(paper, arm);
+    const book = paperBook(paper, arm);
     return book ? paperBlotter(book) : [];
   }, [paper, arm]);
   if (!paper) return null;
-  const book = armBook(paper, arm);
+  const book = paperBook(paper, arm);
   const stats = book ? paperStats(book) : null;
 
   return (
     <>
       <div className="hist-section-title">
-        模擬盤(⚡ rising edge 開倉 · 15 分鐘收盤 mark 觸發 · SL 優先偏保守)
+        模擬盤交易簿(確認盤現行 · 舊即時入場帳只作 control)
       </div>
       <div className="hist-blot-bar">
-        {(['A', 'B', 'C'] as PaperArm[]).map((a) => (
+        {(['confirmed', 'A', 'B', 'C'] as PaperBookId[]).map((a) => (
           <button
             key={a}
             type="button"
@@ -607,7 +592,7 @@ function PaperBlotterSection({ onSelect }: { onSelect: (s: string) => void }) {
           </button>
         ))}
         <button type="button" className="fb-toggle" onClick={() => exportBlotterCsv(paper)}>
-          ⬇ CSV(三臂逐筆)
+          ⬇ CSV(全部帳逐筆)
         </button>
       </div>
       {book && stats && (
@@ -675,7 +660,7 @@ function PaperBlotterSection({ onSelect }: { onSelect: (s: string) => void }) {
         ))}
         {rows.length === 0 && (
           <div className="sr-empty muted">
-            {ARM_LABEL[arm]} 未有成交 — {arm === 'A' ? '等下一個 ⚡ rising edge。' : '呢臂較新,時鐘由開臂日起計。'}
+            {ARM_LABEL[arm]} 未有成交 — {arm === 'confirmed' ? '等訊號排隊後下一個完整 15m sweep。' : '舊對照帳由各自開帳日起計。'}
           </div>
         )}
       </div>
@@ -735,7 +720,7 @@ export default function HistoryView({ tab, onTab, onSelect }: Props) {
     () => (idx && idx.slots.length >= 2 ? runEval(idx, TARGET, evalSrc) : null),
     [idx, evalSrc],
   );
-  const notifies = useMemo(() => (text != null ? parseNotifyLines(text) : []), [text]);
+  const notifies = useMemo(() => (text != null ? parseDeliveredSignals(text) : []), [text]);
   const journal = useMemo(() => (idx ? buildJournal(idx, notifies) : []), [idx, notifies]);
 
   return (
@@ -780,6 +765,7 @@ export default function HistoryView({ tab, onTab, onSelect }: Props) {
 
       {status === 'ready' && (
         <>
+          {idx && <TgOutcomeSection idx={idx} events={notifies} />}
           {results ? (
             <>
               <div className="hist-section-title">

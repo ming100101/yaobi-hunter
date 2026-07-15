@@ -7,7 +7,7 @@
 //   TP2 @1.08 close 30% → +80.00  (equity 10146.67)
 //   TP3 @1.15 close 20% → +100.00 (equity 10246.67, full winner = +2.47R)
 //   straight SL @0.97   → −100.00 (equity 9900.00, −1R exactly)
-import { createPaperState, drivePaper, paperStats } from '../src/lib/paper';
+import { PAPER_ENTRY_POLICY_ID, createPaperState, drivePaper, paperStats } from '../src/lib/paper';
 import type { PaperState } from '../src/lib/paper';
 
 let failures = 0;
@@ -131,6 +131,34 @@ const edge = (sym: string) => new Set([sym]);
   s2 = drivePaper(s2, mk('RUG', 0.8), new Set(), T0 + SLOT);
   check('C far-SL equity', s2.armC!.equity, 9900.0);
   check('C SL avgR', paperStats(s2.armC!).avgR, -1, 0.001);
+}
+
+// ---- confirmed entry book: queue now, fill next observed 15m sweep ---------
+{
+  let s: PaperState = createPaperState(cfg);
+  s = drivePaper(s, mk('WAIT', 1.0), edge('WAIT'), T0);
+  check('confirmed no same-bar fill', s.confirmed!.positions.length, 0, 1e-9);
+  check('confirmed queues signal', s.confirmed!.pending!.length, 1, 1e-9);
+  s = drivePaper(s, mk('WAIT', 1.02), new Set(), T0 + SLOT);
+  check('confirmed next-bar fill', s.confirmed!.positions[0].entry, 1.02, 1e-9);
+  check('confirmed queue consumed', s.confirmed!.pending!.length, 0, 1e-9);
+  check('confirmed signal price frozen', s.confirmed!.positions[0].signalPx!, 1.0, 1e-9);
+  checkStr('confirmed policy frozen', s.confirmed!.positions[0].entryPolicyId!, PAPER_ENTRY_POLICY_ID);
+  const fillAudit = s.confirmed!.entryAudit!.find((r) => r.action === 'filled')!;
+  check('confirmed fill delay', fillAudit.delayMin!, 15, 1e-9);
+  check('confirmed fill slippage', fillAudit.slippagePct!, 2, 1e-9);
+
+  let expired: PaperState = createPaperState(cfg);
+  expired = drivePaper(expired, mk('LATE', 1.0), edge('LATE'), T0);
+  expired = drivePaper(expired, mk('LATE', 0.99), new Set(), T0 + 60 * 60 * 1000);
+  check('confirmed gap expires', expired.confirmed!.positions.length, 0, 1e-9);
+  check('confirmed expired queue empty', expired.confirmed!.pending!.length, 0, 1e-9);
+  check(
+    'confirmed expiry audited',
+    expired.confirmed!.entryAudit!.filter((r) => r.action === 'expired').length,
+    1,
+    1e-9,
+  );
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`);

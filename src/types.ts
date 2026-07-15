@@ -17,6 +17,122 @@ export interface VolumeBar {
   time: number;
   value: number; // USD notional
   up: boolean;
+  // Binance kline field 10, quote-denominated taker BUY notional. Optional so
+  // old caches/demo data keep their exact meaning. Never infer this from an up
+  // candle: those are two different measurements.
+  takerBuy?: number;
+}
+
+// ---- Ultimate Money Maker v1: common research / shadow interfaces ---------
+
+export type StrategyId =
+  | 'boarding-b2-v1'
+  | 'boarding-b2-oi-v1'
+  | 'ema20-reclaim-control-v1'
+  | 'organic-spot-v0'
+  | 'spot-led-v1'
+  | 'virgin-v2'
+  | 'rebuild-r1'
+  | 'flush-breakout'
+  | 'deep-reclaim-v0';
+
+export type StrategyCandidateStatus = 'shadow' | 'paper' | 'eligible' | 'rejected';
+export type ExecutionPolicyId = 'time24-sl3-v1' | 'ladder-4-8-15-sl3-v1';
+
+export interface DataCoverage {
+  complete: boolean;
+  barsExpected: number;
+  barsObserved: number;
+  contiguous: boolean;
+  fundingComplete: boolean;
+  reason?: string;
+}
+
+export interface StrategyCandidate {
+  type: 'strategy-candidate';
+  v: 1;
+  id: string;
+  strategyId: StrategyId;
+  rulesetId: string;
+  sym: string;
+  decisionTs: number;
+  signalPx: number;
+  status: StrategyCandidateStatus;
+  source: 'historical' | 'forward';
+  regime?: 'up' | 'down' | 'chop';
+  strength?: number;
+  ema20?: number;
+  ema50?: number;
+  atr?: number;
+  oiQty1h?: number | null;
+  oiQty4h?: number | null;
+  takerBuyShare4h?: number | null;
+  spotVol24h?: number | null;
+  perpVol24h?: number | null;
+  basisPct?: number | null;
+  reason?: string;
+}
+
+export interface ThresholdOrdering {
+  plus4At?: number;
+  plus8At?: number;
+  plus15At?: number;
+  minus3At?: number;
+  plus4BeforeMinus3: boolean;
+}
+
+export interface StrategyOutcome {
+  type: 'strategy-outcome';
+  v: 1;
+  id: string;
+  candidateId: string;
+  strategyId: StrategyId;
+  executionPolicyId: ExecutionPolicyId;
+  sym: string;
+  decisionTs: number;
+  entryTs: number;
+  entryPx: number;
+  exitTs: number;
+  exitPx: number;
+  grossReturn: number; // decimal return on notional
+  costReturn: number; // positive decimal cost deducted from gross
+  fundingReturn: number; // signed decimal cost; negative funding is a credit
+  netReturn: number;
+  mfe: number;
+  mae: number;
+  ordering: ThresholdOrdering;
+  coverage: DataCoverage;
+  terminal: 'time' | 'stop' | 'ladder-complete' | 'insufficient-data';
+}
+
+export interface ExecutionPolicy {
+  id: ExecutionPolicyId;
+  roundTripCostBps: 30 | 60;
+  hardStopPct: 3;
+  maxHoldH: 24 | 48;
+}
+
+export interface PortfolioPolicy {
+  id: 'balanced-v1';
+  leverage: 1;
+  riskPerTradePct: 0.5;
+  maxPositionNotionalPct: 20;
+  maxOpenPositions: 4;
+  maxOpenRiskPct: 2;
+  dailyLossBlockPct: 1.5;
+  drawdownLockPct: 10;
+}
+
+export interface PromotionDecision {
+  strategyId: StrategyId;
+  stage: 'shadow' | 'paper';
+  pass: boolean;
+  reasons: string[];
+  counts: { trades: number; coins: number; utcDays: number; months: number };
+  netMean: number;
+  maxDrawdown: number;
+  matchedLift?: number;
+  stressNetMean?: number;
 }
 
 // what the entry level MEANS — anchored to structure, not to fetch time
@@ -49,11 +165,16 @@ export interface Coin {
   // store data) — OI-gated signals fail closed and the UI tags the value 滯後.
   // Absent (demo/old cache) ⇒ treated as trusted, pre-P1 behaviour.
   oiTrusted?: boolean;
+  // Raw-contract OI trends from the quantity-only warm store. Null/absent means
+  // the as-of store lacked a fresh 1h/4h reference; never substitute USD OI.
+  oiQty1h?: number | null;
+  oiQty4h?: number | null;
   f24h?: number; // R3: funding rate 24h ago (%), same window as interpret buildCtx; recorded idx23
   funding: number; // current rate in %
   volZ: number; // volume z-score
   vol24h: number; // USD
   oiUsd?: number | null; // absolute open interest in USD (bulk snapshot, live scan only)
+  oiQty?: number | null; // current raw Binance openInterest contract quantity
   spotVol24h?: number | null; // S1: 24h spot USD volume (bulk spot ticker); null if no spot pair
   basisPct?: number | null; // S1: perp/spot basis % = (perpLast/spotLast − 1)×100; null if no spot pair
   // S2 candidate-tier spot series for the cross-source detectors; present only
@@ -109,6 +230,152 @@ export interface NotifyCfg {
   telegramChatId: string;
   toast: boolean; // fire a Windows toast too
   cooldownH: number; // per-coin cooldown, hours
+  // Second-stage Telegram watch: after an eligible confirmed push, wait for a
+  // frozen-support pullback/reclaim before sending an entry-ready follow-up.
+  // Optional for backwards compatibility. Runtime treats absence as enabled
+  // for App-only shadow collection; class promotion separately gates TG.
+  entryWatchEnabled?: boolean;
+  // Independent deep-reclaim v0 test feed. Optional/absent is ON for this
+  // user-approved experimental deployment; false is the explicit opt-out.
+  deepReclaimTestEnabled?: boolean;
+}
+
+// Headless Telegram notification classes. Keep this explicit rather than
+// deriving an id from a persistence-key string (e.g. `fb-notified-headless`).
+export type NotifySignalClass = 'fb' | 'rb' | 'vg';
+export type NotifyDeliveryVia = 'photo' | 'text';
+
+// Every first-stage card that Telegram confirmed as delivered. `px` is the
+// price printed on that card: it is a signal reference, never represented as
+// an executable fill. v3 records `attemptedAt` separately because a photo send
+// can complete seconds after the attempt began.
+export interface DeliveredSignal {
+  id: string;
+  sym: string;
+  cls: NotifySignalClass;
+  attemptedAt: number;
+  ts: number; // Telegram success time, ms epoch
+  deliveredAt: number; // explicit v3 provenance; equal to ts
+  px: number; // TG card price / scan reference price
+  strength: number;
+  via: NotifyDeliveryVia;
+  telegramMessageId?: number;
+}
+
+// One Telegram push that the Telegram API confirmed as delivered. `support`
+// and `atr` are frozen at that moment and are intentionally distinct from
+// `plan.entry`: fb/rb/vg are prior-high breakouts, while plan.entry can be an
+// EMA pullback or another regime-dependent display level.
+export interface DeliveredPush extends DeliveredSignal {
+  plan: ExitPlan;
+  support: number; // frozen breakout support, price units
+  atr: number; // frozen clock-aligned 1H ATR14, price units
+  // Frozen at first-stage delivery. False candidates still run as record-only
+  // shadow watches, but can never emit the second Telegram notification.
+  followupEnabled: boolean;
+}
+
+// notifyClassEdges' structured result: the current on-state remains available
+// for rising-edge threading, while only confirmed Telegram sends appear in
+// `delivered`; only `watchable` carries a complete frozen watch anchor.
+export interface NotifyRunResult {
+  current: Set<string>;
+  delivered: DeliveredSignal[]; // every Telegram-confirmed first-stage card
+  watchable: DeliveredPush[]; // delivered cards with complete frozen support/ATR/plan
+}
+
+export type EntryWatchStatus =
+  | 'watching'
+  | 'ready'
+  | 'sending'
+  | 'delivered'
+  | 'expired'
+  | 'missed'
+  | 'invalidated'
+  | 'superseded';
+
+export type EntryWatchEventKind =
+  | 'armed'
+  | 'ready'
+  | 'delivery-failed'
+  | 'delivered'
+  | 'expired'
+  | 'missed'
+  | 'invalid'
+  | 'superseded';
+
+// Durable second-stage candidate. There is at most one active candidate per
+// symbol; a newer confirmed first push supersedes the older one. All thresholds
+// are materialized here so a restart cannot move the entry band.
+export interface EntryWatchCandidate {
+  id: string;
+  sourceId: string;
+  sym: string;
+  cls: NotifySignalClass;
+  sourceTs: number;
+  sourcePx: number;
+  strength: number;
+  via: NotifyDeliveryVia;
+  telegramMessageId?: number;
+  plan: ExitPlan;
+  support: number;
+  atr: number;
+  followupEnabled: boolean;
+  bandLow: number; // support - 0.5 ATR
+  bandHigh: number; // support + 0.5 ATR
+  invalidBelow: number; // support - 1 ATR; a 15m close below invalidates
+  missedAbove: number; // source price +15%; continuation escaped without a pullback
+  minReadyAt: number; // sourceTs +30m
+  expiresAt: number; // sourceTs +24h
+  status: EntryWatchStatus;
+  lastBarTs: number; // last processed 15m close timestamp; 0 before the first
+  lastPx?: number;
+  readyAt?: number;
+  readyPx?: number;
+  terminalAt?: number;
+  attemptCount: number;
+  nextAttemptAt?: number;
+}
+
+// Append-only audit record for UI/history/restart reconciliation. `id` is the
+// event id; `watchId` identifies the candidate across all of its transitions.
+export interface EntryWatchEvent {
+  type: 'entry-watch';
+  v: 1;
+  id: string;
+  watchId: string;
+  sourceId: string;
+  event: EntryWatchEventKind;
+  status: EntryWatchStatus;
+  ts: number;
+  sym: string;
+  cls: NotifySignalClass;
+  px: number;
+  support: number;
+  atr: number;
+  bandLow: number;
+  bandHigh: number;
+  followupEnabled: boolean;
+  replacedBy?: string;
+  reason?: string;
+}
+
+export interface EntryWatchObservation {
+  ts: number; // 15m bar CLOSE time, ms epoch
+  high: number;
+  low: number;
+  close: number;
+}
+
+export interface EntryWatchTransition {
+  candidate: EntryWatchCandidate;
+  event?: EntryWatchEvent;
+}
+
+export interface EntryWatchState {
+  v: 1;
+  updatedAt: number;
+  active: Record<string, EntryWatchCandidate>; // uppercase symbol -> candidate
 }
 
 // per-symbol timestamps of when each signal state was first entered
@@ -139,6 +406,11 @@ export interface RefSignal {
   exits?: number[]; // scale-out fractions (e.g. [0.3, 0.3, 0.35], remainder = moonbag)
   refHitRate?: { alerts: number; wins: number; bestPct: number; windowDays: number }; // his self-reported 歷史 footer
   notes?: string;
+  // v2 provenance: provisional chart-cross estimates must never enter a
+  // promotion gate as though they were real Telegram publication timestamps.
+  anchorMethod?: 'actual-message' | 'chart-entry-cross-estimate';
+  uncertaintyMs?: number;
+  gateEligible?: boolean;
 }
 
 // 早期蓄力 watchlist confirmation numbers (see lib/analyze.ts for thresholds
@@ -156,7 +428,9 @@ export interface EarlyAccum {
 export interface RecFeatures {
   ret4h: number; // % over 4h
   pos: number; // 0..1 range position over 24h
-  buyShare4h: number; // 0..1 taker-buy share over 4h
+  buyShare4h: number; // legacy 0..1 up-candle quote-volume share over 4h
+  takerBuyShare4h?: number | null; // true Binance taker-buy quote share; absent on old/cache data
+  spotTakerBuyShare4h?: number | null; // true SPOT taker-buy quote share over completed 5m bars
   f8h: number; // funding rate 8h ago, %
   bbPctile: number; // 0..1 Bollinger-bandwidth percentile in the window
 }
@@ -172,6 +446,8 @@ export interface CoinLite {
   change24h: number;
   oi4h: number;
   oiTrusted?: boolean; // P1: see Coin.oiTrusted — false ⇒ laggy value, gates fail closed
+  oiQty1h?: number | null; // trusted raw-contract OI change; unavailable => null
+  oiQty4h?: number | null; // trusted raw-contract OI change; unavailable => null
   f24h?: number | null; // R3: funding 24h ago (%) for recording idx23; null/absent on demo/old cache
   funding: number;
   volZ: number;
@@ -179,6 +455,7 @@ export interface CoinLite {
   lastPrice: number;
   spark?: number[]; // 24h closes @ 30-min resolution (~48 pts, 5 sig figs) from toLite; optional so old cache/demo/recorded coins typecheck
   oiUsd: number | null; // absolute open interest (USD) from the bulk snapshot; recorder logs this
+  oiQty?: number | null; // raw Binance openInterest contracts; recorder v5 idx25
   flushBreakout: boolean; // backtested 縮倉突破 trigger is live on this coin
   earlyAccum: boolean; // 早期蓄力 watchlist flag
   spotPump?: boolean; // S2 現貨帶動 (spot-led-pump, backtest lift ×1.79); only on candidate coins with spot data
@@ -197,6 +474,7 @@ export interface CoinLite {
     oiDropPct?: number | null;
     spotVol24h?: number | null;
     basisPct?: number | null;
+    spotTakerBuyShare4h?: number | null;
   };
 }
 

@@ -1,6 +1,7 @@
 import type { CoinLite } from '../types';
 import { kvGet, kvSet } from '../data/cache';
 import { fmtMoney, fmtPct } from './format';
+import { SIGNAL_EVIDENCE_COPY } from './evidenceCopy';
 
 // Desktop toasts for newly-fired ⚡ 縮倉突破 signals. Fires at most once per
 // symbol per cooldown window (persisted in IndexedDB so an app restart doesn't
@@ -42,7 +43,7 @@ export async function notifyNewSignals(
       const n = new Notification(`⚡ 縮倉突破 — ${c.symbol}/USDT`, {
         body:
           `強度 ${c.strength} · 1h ${fmtPct(c.change1h)} · 24h量 ${fmtMoney(c.vol24h)}\n` +
-          `回測 lift ×2 訊號（僅供排序參考）· 點擊查看`,
+          `${SIGNAL_EVIDENCE_COPY.flushBreakout.notify} · 點擊查看`,
         tag: `fb-${c.symbol}`, // replaces rather than stacks per coin
         icon: '/favicon.svg',
       });

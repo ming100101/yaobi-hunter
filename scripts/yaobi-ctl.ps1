@@ -43,7 +43,7 @@ function Stop-YaobiProcesses {
 }
 
 function Start-App {
-  if (Test-Path $Exe) { Start-Process -FilePath $Exe -ArgumentList '--auto' -WindowStyle Hidden }
+  if (Test-Path $Exe) { Start-Process -FilePath $Exe -ArgumentList @('--auto', '--daemon') -WindowStyle Hidden }
 }
 function Start-Recorder {
   Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden `
@@ -60,7 +60,7 @@ switch ($Action.ToLower()) {
     & npx --no-install esbuild scripts/recorder.ts --bundle --format=esm --platform=node --outfile=scripts/.build/recorder.mjs --log-level=warning
     Pop-Location
 
-    $appLine = 'CreateObject("WScript.Shell").Run """__EXE__"" --auto", 0, False'.Replace('__EXE__', $Exe)
+    $appLine = 'CreateObject("WScript.Shell").Run """__EXE__"" --auto --daemon", 0, False'.Replace('__EXE__', $Exe)
     Set-Content -Path $AppVbs -Value $appLine -Encoding ASCII
 
     $recLine = 'CreateObject("WScript.Shell").Run "powershell -NoProfile -WindowStyle Hidden -Command ""Set-Location ''__REPO__''; node ''__REC__''""", 0, False'.Replace('__REPO__', $Repo).Replace('__REC__', $RecorderMjs)
@@ -94,6 +94,9 @@ switch ($Action.ToLower()) {
   }
   'resume' {
     Remove-Item -Force $KillFile -ErrorAction SilentlyContinue
+    # Resume is idempotent: repeated clicks must not create parallel recorder
+    # writers/watchers or duplicate Telegram alerts.
+    Stop-YaobiProcesses
     Start-App
     Start-Recorder
     Write-Host 'RESUMED. KILL file cleared; app + recorder relaunched.'

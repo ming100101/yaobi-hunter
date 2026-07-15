@@ -8,7 +8,7 @@ import type { CoinLite, Regime, ScanSource } from '../types';
 
 // Per-coin row. v1 rows are the first 10 elements; v2 appends the feature
 // vector + EA/spot numbers (indexes 10-21); v3 (R3) appends 22-23; v4 (S14)
-// appends 24. NEVER reorder or remove earlier positions — months of data are
+// appends 24; v5 appends quantity OI at 25-27. NEVER reorder or remove earlier positions — months of data are
 // keyed by them. Read idx >= 10 ONLY via recCoinField (shorter rows read those
 // positions as null).
 // [0 sym, 1 price, 2 oiUsd, 3 funding%, 4 volZ, 5 strength, 6 regimeCode,
@@ -17,7 +17,8 @@ import type { CoinLite, Regime, ScanSource } from '../types';
 //  16 lsDropPct, 17 rsPct, 18 oiDropPct, 19 spotVol24hUsd, 20 basisPct%,
 //  21 oi4hPct (P1: null when OI untrusted — eval must skip, not treat as 0),
 //  22 change1h%, 23 f24h%,
-//  24 earlyPump (S14: 0|1 — pre-breakout markup fired live this sweep)]
+//  24 earlyPump (S14: 0|1 — pre-breakout markup fired live this sweep),
+//  25 oiQty, 26 oiQty1hPct, 27 oiQty4hPct (null unless available/trusted)]
 export type RecCoin = [
   string,
   number,
@@ -47,10 +48,18 @@ export type RecCoin = [
   number | null,
   // ---- v4 (S14) appends ----
   0 | 1,
+  // ---- v5 quantity OI appends ----
+  number | null,
+  number | null,
+  number | null,
+  // ---- v6 true taker-buy quote share ----
+  number | null,
+  // ---- v7 true spot taker-buy quote share ----
+  number | null,
 ];
 
 export interface ScanRecord {
-  v?: number; // schema version; absent/1 = legacy 10-field rows, 2 = feature vector, 3 = +change1h/f24h (R3), 4 = +earlyPump (S14)
+  v?: number; // absent/1=legacy; ... 6=perp taker buy; 7=spot taker buy
   ts: number; // ms epoch of the sweep
   slot: number; // 15-min slot index (dedup key across writers)
   source: ScanSource;
@@ -124,7 +133,7 @@ const fixN = (x: number | null | undefined, d: number): number | null =>
 
 export function buildScanRecord(coins: CoinLite[], tsMs: number, source: ScanSource): ScanRecord {
   return {
-    v: 4,
+    v: 7,
     ts: tsMs,
     slot: Math.floor(tsMs / REC_SLOT_MS),
     source,
@@ -161,6 +170,12 @@ export function buildScanRecord(coins: CoinLite[], tsMs: number, source: ScanSou
         fixN(c.f24h, 4), // idx23 — funding-overheat / extreme-negative replay 用
         // ---- v4 (S14) appends ----
         c.earlyPump ? 1 : 0, // idx24 — 早期拉盤 live fire (E1 evidence for notify promotion)
+        // ---- v5 raw-contract OI appends; never derived from oiUsd ----
+        c.oiQty == null ? null : sig(c.oiQty, 10), // idx25 current quantity
+        fixN(c.oiQty1h, 4), // idx26 trusted 1h % change
+        fixN(c.oiQty4h, 4), // idx27 trusted 4h % change
+        fixN(f?.takerBuyShare4h, 4), // idx28 true taker BUY quote share
+        fixN(f?.spotTakerBuyShare4h, 4), // idx29 true SPOT taker BUY quote share
       ];
     }),
   };

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { NotifyCfg } from '../types';
 import { kvGet, kvSet } from '../data/cache';
+import { ENTRY_WATCH_AVAILABLE } from '../lib/entryWatch';
 import BrandMark from './BrandMark';
 import NavTabs, { type AppTab } from './NavTabs';
 
@@ -9,7 +10,19 @@ interface Props {
   onTab: (t: AppTab) => void;
 }
 
-const DEFAULT: NotifyCfg = { telegramToken: '', telegramChatId: '', toast: true, cooldownH: 6 };
+type SettingsNotifyCfg = NotifyCfg & { deepReclaimTestEnabled?: boolean };
+
+const DEFAULT: SettingsNotifyCfg = {
+  telegramToken: '',
+  telegramChatId: '',
+  toast: true,
+  cooldownH: 6,
+  // Shadow collection defaults on. The separate per-class promotion map still
+  // prevents every current watch from emitting a second Telegram.
+  entryWatchEnabled: ENTRY_WATCH_AVAILABLE,
+  // Test monitoring is opt-out: older saved configs without this field are on.
+  deepReclaimTestEnabled: true,
+};
 
 interface Channel {
   ok: boolean;
@@ -17,15 +30,17 @@ interface Channel {
 }
 
 export default function SettingsView({ tab, onTab }: Props) {
-  const [cfg, setCfg] = useState<NotifyCfg>(DEFAULT);
+  const [cfg, setCfg] = useState<SettingsNotifyCfg>(DEFAULT);
   const [showToken, setShowToken] = useState(false);
-  const [busy, setBusy] = useState<null | 'detect' | 'test'>(null);
+  const [busy, setBusy] = useState<null | 'detect' | 'test' | 'test-entry' | 'test-deep'>(null);
   const [detectMsg, setDetectMsg] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ telegram: Channel; toast: Channel } | null>(null);
+  const [entryTestResult, setEntryTestResult] = useState<{ initial: Channel; followup: Channel } | null>(null);
+  const [deepTestResult, setDeepTestResult] = useState<{ early: Channel; confirm: Channel } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
   useEffect(() => {
-    void kvGet<NotifyCfg>('notify').then((v) => {
+    void kvGet<SettingsNotifyCfg>('notify').then((v) => {
       if (v) setCfg({ ...DEFAULT, ...v });
     });
   }, []);
@@ -35,14 +50,14 @@ export default function SettingsView({ tab, onTab }: Props) {
   // which the user may edit a field) and persist to kv, which the recorder
   // reads. `edit` = local-only (text fields, each keystroke); `persist` = write
   // current state (on blur / explicit actions).
-  const patch = (p: Partial<NotifyCfg>) => {
+  const patch = (p: Partial<SettingsNotifyCfg>) => {
     setCfg((prev) => {
       const next = { ...prev, ...p };
       void kvSet('notify', next);
       return next;
     });
   };
-  const edit = (p: Partial<NotifyCfg>) => setCfg((prev) => ({ ...prev, ...p }));
+  const edit = (p: Partial<SettingsNotifyCfg>) => setCfg((prev) => ({ ...prev, ...p }));
   const persist = () =>
     setCfg((prev) => {
       void kvSet('notify', prev);
@@ -95,6 +110,64 @@ export default function SettingsView({ tab, onTab }: Props) {
     setBusy(null);
   };
 
+  const testEntryFollowup = async () => {
+    setBusy('test-entry');
+    setEntryTestResult(null);
+    persist();
+    try {
+      const r = await fetch('/notify-test-entry', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          token: cfg.telegramToken,
+          chatId: cfg.telegramChatId,
+          toast: cfg.toast,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      const fallback: Channel = r.ok
+        ? { ok: true }
+        : { ok: false, error: j.error || `HTTP ${r.status}` };
+      setEntryTestResult({
+        initial: j.initial ?? j.telegram ?? fallback,
+        followup: j.followup ?? j.follow ?? j.entry ?? j.telegram ?? fallback,
+      });
+    } catch {
+      const failed = { ok: false, error: '伺服器連線失敗' };
+      setEntryTestResult({ initial: failed, followup: failed });
+    }
+    setBusy(null);
+  };
+
+  const testDeepReclaim = async () => {
+    setBusy('test-deep');
+    setDeepTestResult(null);
+    persist();
+    try {
+      const r = await fetch('/notify-test-deep-reclaim', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          token: cfg.telegramToken,
+          chatId: cfg.telegramChatId,
+          toast: cfg.toast,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      const fallback: Channel = r.ok
+        ? { ok: true }
+        : { ok: false, error: j.error || `HTTP ${r.status}` };
+      setDeepTestResult({
+        early: j.early ?? j.initial ?? j.telegram ?? fallback,
+        confirm: j.confirm ?? j.confirmed ?? j.followup ?? j.telegram ?? fallback,
+      });
+    } catch {
+      const failed = { ok: false, error: '連唔到測試服務' };
+      setDeepTestResult({ early: failed, confirm: failed });
+    }
+    setBusy(null);
+  };
+
   // U1: export/import backup of the config-like kv keys (the port-bug data-loss
   // insurance). Telegram token/chatId are NEVER written to the file, and on import
   // the existing token/chatId are preserved (a backup can't leak or wipe secrets).
@@ -103,7 +176,7 @@ export default function SettingsView({ tab, onTab }: Props) {
   const exportBackup = async () => {
     const [pinned, notify, settings, paper] = await Promise.all([
       kvGet<string[]>('pinned'),
-      kvGet<NotifyCfg>('notify'),
+      kvGet<SettingsNotifyCfg>('notify'),
       kvGet<unknown>('settings'),
       kvGet<{ cfg?: unknown }>('paper-state'),
     ]);
@@ -113,7 +186,14 @@ export default function SettingsView({ tab, onTab }: Props) {
       _ts: Date.now(),
       pinned: pinned ?? [],
       // token + chatId stripped — shareable file must never carry secrets
-      notify: notify ? { toast: notify.toast, cooldownH: notify.cooldownH } : undefined,
+      notify: notify
+        ? {
+            toast: notify.toast,
+            cooldownH: notify.cooldownH,
+            entryWatchEnabled: notify.entryWatchEnabled === true,
+            deepReclaimTestEnabled: notify.deepReclaimTestEnabled !== false,
+          }
+        : undefined,
       settings: settings ?? undefined,
       paperCfg: paper?.cfg ?? undefined,
     };
@@ -136,12 +216,20 @@ export default function SettingsView({ tab, onTab }: Props) {
       await kvSet('pinned', b.pinned.filter((x: unknown) => typeof x === 'string'));
       if (b.settings && typeof b.settings === 'object') await kvSet('settings', b.settings);
       if (b.notify && typeof b.notify === 'object') {
-        const existing = (await kvGet<NotifyCfg>('notify')) ?? DEFAULT;
+        const existing = (await kvGet<SettingsNotifyCfg>('notify')) ?? DEFAULT;
         // preserve the live token/chatId; only merge the non-secret fields
         await kvSet('notify', {
           ...existing,
           toast: b.notify.toast !== false,
           cooldownH: Number.isFinite(Number(b.notify.cooldownH)) ? Number(b.notify.cooldownH) : existing.cooldownH,
+          entryWatchEnabled:
+            typeof b.notify.entryWatchEnabled === 'boolean'
+              ? b.notify.entryWatchEnabled
+              : existing.entryWatchEnabled === true,
+          deepReclaimTestEnabled:
+            typeof b.notify.deepReclaimTestEnabled === 'boolean'
+              ? b.notify.deepReclaimTestEnabled
+              : existing.deepReclaimTestEnabled !== false,
         });
       }
       if (b.paperCfg && typeof b.paperCfg === 'object') {
@@ -175,7 +263,7 @@ export default function SettingsView({ tab, onTab }: Props) {
         <div className="set-head">
           <span className="set-title">⚡ 訊號通知</span>
           <span className="set-sub">
-            閂咗 app 都收到 ⚡ 縮倉突破 —— 由 headless recorder 發 Telegram + Windows 通知
+            閂咗 app 都收到 ⚡ 縮倉、📈 增倉、🚀 處女增倉 —— 由 headless recorder 發 Telegram + Windows 通知
           </span>
         </div>
 
@@ -222,7 +310,7 @@ export default function SettingsView({ tab, onTab }: Props) {
               type="button"
               className="btn ghost"
               onClick={detect}
-              disabled={!tokenSet || busy === 'detect'}
+              disabled={!tokenSet || busy !== null}
               title="先喺 Telegram 傳一句俾你個 bot,再撳呢度自動填 Chat ID"
             >
               {busy === 'detect' ? '偵測中…' : '偵測'}
@@ -264,9 +352,59 @@ export default function SettingsView({ tab, onTab }: Props) {
           />
         </div>
 
+        <div className="set-field set-entry-watch">
+          <label className="set-check">
+            <input
+              type="checkbox"
+              checked={ENTRY_WATCH_AVAILABLE && cfg.entryWatchEnabled === true}
+              onChange={(e) => patch({ entryWatchEnabled: e.target.checked })}
+              disabled={!ENTRY_WATCH_AVAILABLE}
+            />
+            推送後入場監察
+          </label>
+          <div className="set-hint">
+            {ENTRY_WATCH_AVAILABLE
+              ? '成功 ⚡ / 📈 增 / 🚀 擴 TG 推送後監察凍結結構位 24 小時；至少等 30 分鐘先確認。目前全部只做 App／記錄 shadow，不會發第二次 TG，亦不接駁交易。'
+              : '研究鎖定：現有歷史樣本／穩健性未通過 gate，所以只會在 App 記錄觀察結果，不會發第二次 TG。你仍可用下面按鈕測試成對訊息。'}
+          </div>
+        </div>
+
+        <div className="set-field set-entry-watch set-deep-reclaim">
+          <label className="set-check">
+            <input
+              type="checkbox"
+              checked={cfg.deepReclaimTestEnabled !== false}
+              onChange={(e) => patch({ deepReclaimTestEnabled: e.target.checked })}
+            />
+            深跌收復測試監察
+            <span className="set-tag on">研究限定</span>
+          </label>
+          <div className="set-hint">
+            開啟後會記錄「早察 → 等 L0 → 確認／結束」全程，並容許測試兩段 TG；只係市場研究提醒，唔係買入指令。舊設定冇呢一項時會當作開啟。
+          </div>
+        </div>
+
         <div className="set-actions">
-          <button type="button" className="btn" onClick={test} disabled={!tokenSet || busy === 'test'}>
+          <button type="button" className="btn" onClick={test} disabled={!tokenSet || busy !== null}>
             {busy === 'test' ? '傳送中…' : '測試通知'}
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={testEntryFollowup}
+            disabled={!tokenSet || !chatSet || busy !== null}
+            title="傳一對標明為測試嘅初始卡 + 到價跟進；唔會建立真實監察"
+          >
+            {busy === 'test-entry' ? '傳送中…' : '測試入場跟進'}
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={testDeepReclaim}
+            disabled={!tokenSet || !chatSet || busy !== null}
+            title="發一組早察及確認測試訊息，唔會建立監察記錄"
+          >
+            {busy === 'test-deep' ? '傳送中…' : '測試深跌收復'}
           </button>
         </div>
 
@@ -283,6 +421,30 @@ export default function SettingsView({ tab, onTab }: Props) {
                   ? '已關閉'
                   : '已彈出 ✓'
                 : `失敗 — ${testResult.toast.error || '未知'}`}
+            </div>
+          </div>
+        )}
+
+        {entryTestResult && (
+          <div className="set-result">
+            <div className={entryTestResult.initial.ok ? 'set-ok' : 'set-err'}>
+              初始測試卡:{' '}
+              {entryTestResult.initial.ok ? '已傳送 ✓' : `失敗 — ${entryTestResult.initial.error || '未知'}`}
+            </div>
+            <div className={entryTestResult.followup.ok ? 'set-ok' : 'set-err'}>
+              到價跟進:{' '}
+              {entryTestResult.followup.ok ? '已傳送 ✓' : `失敗 — ${entryTestResult.followup.error || '未知'}`}
+            </div>
+          </div>
+        )}
+
+        {deepTestResult && (
+          <div className="set-result">
+            <div className={deepTestResult.early.ok ? 'set-ok' : 'set-err'}>
+              早察測試：{deepTestResult.early.ok ? '已傳送 ✓' : `失敗 — ${deepTestResult.early.error || '未知'}`}
+            </div>
+            <div className={deepTestResult.confirm.ok ? 'set-ok' : 'set-err'}>
+              確認測試：{deepTestResult.confirm.ok ? '已傳送 ✓' : `失敗 — ${deepTestResult.confirm.error || '未知'}`}
             </div>
           </div>
         )}
@@ -304,13 +466,13 @@ export default function SettingsView({ tab, onTab }: Props) {
               撳 Chat ID 隔籬個 <b>偵測</b> 掣 —— 會自動填。
             </li>
             <li>
-              撳 <b>測試通知</b> 確認收到。搞掂!之後 recorder 跑住嘅時候,⚡ 一 fire 就會通知你。
+              撳 <b>測試通知</b> 確認收到。搞掂!之後 recorder 跑住嘅時候,合資格訊號一 fire 就會通知你。
             </li>
           </ol>
         )}
 
         <div className="set-note">
-          通知只喺 headless recorder(或 app / exe)運行時發出。設定 → README「24/7 收集」教你點樣開機自動行。
+          通知同入場監察只喺 headless recorder 運行時持續工作。設定 → README「24/7 收集」教你點樣開機自動行。
         </div>
       </div>
 

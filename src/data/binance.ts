@@ -24,8 +24,10 @@ import {
   getRecentSeries,
   getSeries as getWarmOi,
   hydrate as hydrateOi,
+  oiQtyChangeFromStore,
   seedFromHist,
   storeSize,
+  type OiQtyChange,
 } from './oiStore';
 import { rebuildFires, spotPumpFires, virginFires } from '../lib/interpret';
 
@@ -228,6 +230,97 @@ async function resolvePerp(bn: BnBase, base: string): Promise<PerpInfo> {
   return info;
 }
 
+// Native, clock-aligned CLOSED perp candles for the post-push entry watcher.
+// Unlike the rolling scanner's 5m display grid, these bars are consumed as
+// execution evidence, so an in-progress final bar must never participate.
+export async function fetchClosedPerpCandles(
+  bn: BnBase,
+  base: string,
+  interval: '15m' | '1h',
+  limit = 64,
+): Promise<Candle[]> {
+  const p = await resolvePerp(bn, base);
+  const rows: any[] = await bnGet(
+    bn.fapi,
+    `/fapi/v1/klines?symbol=${p.symbol}&interval=${interval}&limit=${Math.max(2, Math.min(500, limit))}`,
+  );
+  const now = Date.now();
+  return rows
+    .filter((r) => Number(r[6]) < now)
+    .map((r) => ({
+      time: Math.floor(Number(r[0]) / 1000),
+      open: Number(r[1]) / p.mult,
+      high: Number(r[2]) / p.mult,
+      low: Number(r[3]) / p.mult,
+      close: Number(r[4]) / p.mult,
+    }))
+    .filter((c) => Number.isFinite(c.close) && c.close > 0);
+}
+
+export async function fetchClosedPerpOhlcv(
+  bn: BnBase,
+  base: string,
+  interval: '15m' | '1h',
+  limit = 120,
+): Promise<{ candles: Candle[]; volume: VolumeBar[] }> {
+  const p = await resolvePerp(bn, base);
+  const rows: any[] = await bnGet(
+    bn.fapi,
+    `/fapi/v1/klines?symbol=${p.symbol}&interval=${interval}&limit=${Math.max(2, Math.min(500, limit))}`,
+  );
+  const now = Date.now();
+  const candles: Candle[] = [];
+  const volume: VolumeBar[] = [];
+  for (const r of rows) {
+    if (Number(r[6]) >= now) continue;
+    const time = Math.floor(Number(r[0]) / 1000);
+    const open = Number(r[1]) / p.mult;
+    const high = Number(r[2]) / p.mult;
+    const low = Number(r[3]) / p.mult;
+    const close = Number(r[4]) / p.mult;
+    const value = Number(r[7]);
+    const takerBuy = Number(r[10]);
+    if (![open, high, low, close, value].every(Number.isFinite) || !(close > 0)) continue;
+    candles.push({ time, open, high, low, close });
+    volume.push({ time, value, up: close >= open, ...(Number.isFinite(takerBuy) ? { takerBuy } : {}) });
+  }
+  return { candles, volume };
+}
+
+// Funding cashflows for a long position over an exact research horizon.
+// Binance returns decimal rates (for example 0.0001 = 1 bp).  Keeping this
+// beside the native-bar fetch guarantees the evaluator never mixes symbols or
+// multiplier-normalised prices when it accounts for carrying cost.
+export async function fetchPerpFundingCharges(
+  bn: BnBase,
+  base: string,
+  startTs: number,
+  endTs: number,
+): Promise<Array<{ ts: number; rate: number }>> {
+  const p = await resolvePerp(bn, base);
+  if (!(Number.isFinite(startTs) && Number.isFinite(endTs) && endTs >= startTs)) return [];
+  const rows: any[] = await bnGet(
+    bn.fapi,
+    `/fapi/v1/fundingRate?symbol=${p.symbol}&startTime=${Math.floor(startTs)}` +
+      `&endTime=${Math.floor(endTs)}&limit=100`,
+  );
+  return rows
+    .map((r) => ({ ts: Number(r.fundingTime), rate: Number(r.fundingRate) }))
+    .filter((r) => Number.isFinite(r.ts) && Number.isFinite(r.rate) && r.ts >= startTs && r.ts <= endTs)
+    .sort((a, b) => a.ts - b.ts);
+}
+
+// Fresh normalized mark used as the price frozen into a successful Telegram
+// push/watch. One cached bulk ticker request serves every alert in the sweep.
+export async function fetchPerpMark(bn: BnBase, base: string): Promise<number> {
+  const p = await resolvePerp(bn, base);
+  const rows = await getAllTickers(bn);
+  const row = rows.find((r) => r.symbol === p.symbol);
+  const px = Number(row?.lastPrice) / p.mult;
+  if (!(px > 0)) throw new Error(`no fresh mark for ${base}`);
+  return px;
+}
+
 // bulk perp tickers cached briefly so the search tab filters client-side per
 // keystroke. One request, weight 40.
 let tickersCache: { at: number; rows: any[] } | null = null;
@@ -298,16 +391,19 @@ function spotFields(
 export async function fetchBulkOi(
   bn: BnBase,
   universe: Array<{ instId: string; base: string; last: number }>,
-): Promise<Array<{ instId: string; oiUsd: number }>> {
-  const out: Array<{ instId: string; oiUsd: number }> = [];
+): Promise<Array<{ instId: string; oiQty: number; oiUsd: number }>> {
+  const out: Array<{ instId: string; oiQty: number; oiUsd: number }> = [];
   await mapPool(
     universe,
     4,
     async (u) => {
       try {
         const j = await bnGet(bn.fapi, `/fapi/v1/openInterest?symbol=${u.instId}`, 2);
-        const usd = Number(j.openInterest) * u.last;
-        if (Number.isFinite(usd) && usd > 0) out.push({ instId: u.base, oiUsd: Math.round(usd) });
+        const oiQty = Number(j.openInterest);
+        const oiUsd = oiQty * u.last;
+        if (Number.isFinite(oiQty) && oiQty > 0 && Number.isFinite(oiUsd) && oiUsd > 0) {
+          out.push({ instId: u.base, oiQty, oiUsd: Math.round(oiUsd) });
+        }
       } catch {
         /* per-coin best effort */
       }
@@ -365,6 +461,18 @@ function oi4hLiveFromStore(base: string, nowMs: number): number | null {
   return (arr[arr.length - 1].v / ref - 1) * 100;
 }
 
+function oiQtyFieldsFromStore(
+  base: string,
+  asOfMs: number,
+): Pick<Coin, 'oiQty' | 'oiQty1h' | 'oiQty4h'> {
+  const q = oiQtyChangeFromStore(base, asOfMs);
+  return {
+    oiQty: q?.current ?? null,
+    oiQty1h: q?.change1h ?? null,
+    oiQty4h: q?.change4h ?? null,
+  };
+}
+
 // P1: on the first scan, warm the OI store from persisted recordings so coins
 // are trustworthy right after app open instead of waiting hours of live sweeps.
 // Browser-only: the dev/exe server serves GET /recordings (UTC-day files); in
@@ -416,7 +524,8 @@ async function fetchKlines(
     const quoteVol = Number(r[7]); // quote (USDT) notional — mult-agnostic
     times.push(time);
     candles.push({ time, open, high, low, close });
-    volume.push({ time, value: quoteVol, up: close >= open });
+    const takerBuy = Number(r[10]);
+    volume.push({ time, value: quoteVol, up: close >= open, ...(Number.isFinite(takerBuy) ? { takerBuy } : {}) });
   }
   return { candles, volume, times };
 }
@@ -455,7 +564,9 @@ async function getFunding(bn: BnBase, symbol: string, tzShift: number, times: nu
 }
 
 // Cold-path 5m OI series from openInterestHist (limit 500 ≈ 41h; 30d retention).
-// USD unit via sumOpenInterestValue. Unlike OKX rubik this endpoint's tail is
+// It parses USD (`sumOpenInterestValue`) for the legacy chart/analyze series and
+// raw quantity (`sumOpenInterest`) for the independent confirmation store.
+// Unlike OKX rubik this endpoint's tail is
 // FRESH (probed 2026-07-07: lag ≤6.7min), but the P1 discipline is unchanged:
 // gates still read oi4h from the warm store only, this series is display/
 // analyze history. The SAME response also cold-start-seeds the warm store
@@ -465,11 +576,70 @@ async function getFunding(bn: BnBase, symbol: string, tzShift: number, times: nu
 // paced for it.
 let seededThisSweep = 0; // reset per runRollingScan, reported in its final log
 
-async function getOiSrc(bn: BnBase, symbol: string): Promise<Array<{ t: number; v: number }>> {
+interface OiHistPoint {
+  t: number;
+  v: number; // sumOpenInterestValue (USD display/history unit)
+  q: number; // sumOpenInterest (raw contract quantity)
+}
+
+function qtyChangeFromHist(
+  src: Array<{ t: number; q: number }>,
+  asOfMs: number,
+  refMaxLagS: number,
+): OiQtyChange | null {
+  if (!Number.isFinite(asOfMs)) return null;
+  const asOf = Math.floor(asOfMs / 1000);
+  const points = src.filter((p) => p.t <= asOf && Number.isFinite(p.q) && p.q > 0).sort((a, b) => a.t - b.t);
+  if (points.length < 3) return null;
+  const current = points[points.length - 1];
+  if (asOf - current.t > 10 * 60) return null;
+  const refAt = (seconds: number): number | null => {
+    const target = current.t - seconds;
+    for (let i = points.length - 2; i >= 0; i--) {
+      if (points[i].t <= target) return target - points[i].t <= refMaxLagS ? points[i].q : null;
+    }
+    return null;
+  };
+  const q1 = refAt(3600);
+  const q4 = refAt(4 * 3600);
+  if (!(q1 != null && q1 > 0 && q4 != null && q4 > 0)) return null;
+  return {
+    observedAt: current.t * 1000,
+    current: current.q,
+    change1h: (current.q / q1 - 1) * 100,
+    change4h: (current.q / q4 - 1) * 100,
+  };
+}
+
+// Targeted exact-as-of quantity read for a completed 15m close. Recorder uses
+// this only for price-qualified candidates/active watches, avoiding another
+// full-universe snapshot fan-out. Quantity is read from sumOpenInterest only;
+// sumOpenInterestValue is deliberately ignored.
+export async function fetchOiQtyChange(
+  bn: BnBase,
+  base: string,
+  asOfMs: number,
+): Promise<OiQtyChange | null> {
+  const p = await resolvePerp(bn, base);
+  const rows: any[] = await bnGet(
+    bn.fapi,
+    `/futures/data/openInterestHist?symbol=${p.symbol}&period=5m&limit=500`,
+  );
+  const src = rows
+    .map((r) => ({ t: Math.floor(Number(r.timestamp) / 1000), q: Number(r.sumOpenInterest) }))
+    .filter((r) => Number.isFinite(r.t) && Number.isFinite(r.q) && r.q > 0);
+  return qtyChangeFromHist(src, asOfMs, 10 * 60);
+}
+
+async function getOiSrc(bn: BnBase, symbol: string): Promise<OiHistPoint[]> {
   const rows: any[] = await bnGet(bn.fapi, `/futures/data/openInterestHist?symbol=${symbol}&period=5m&limit=500`);
   return rows
-    .map((r) => ({ t: Math.floor(Number(r.timestamp) / 1000), v: Number(r.sumOpenInterestValue) }))
-    .filter((p) => Number.isFinite(p.v))
+    .map((r) => ({
+      t: Math.floor(Number(r.timestamp) / 1000),
+      v: Number(r.sumOpenInterestValue),
+      q: Number(r.sumOpenInterest),
+    }))
+    .filter((p) => Number.isFinite(p.v) && p.v > 0 && Number.isFinite(p.q) && p.q > 0)
     .sort((a, b) => a.t - b.t);
 }
 
@@ -495,7 +665,7 @@ interface DeepParts {
   at: number;
   candles: Candle[]; // ~14d of 5m, prices per-coin, times tz-shifted
   volume: VolumeBar[];
-  oi1hSrc: Array<{ t: number; v: number }>; // raw 1h openInterestHist (~20d), epoch-s
+  oi1hSrc: OiHistPoint[]; // raw 1h openInterestHist (~20d), epoch-s
 }
 const deepCache = new Map<string, DeepParts>();
 
@@ -524,7 +694,8 @@ async function fetchKlines5mDeep(bn: BnBase, p: { symbol: string; mult: number }
     const open = Number(r[1]) / p.mult;
     const close = Number(r[4]) / p.mult;
     candles.push({ time, open, high: Number(r[2]) / p.mult, low: Number(r[3]) / p.mult, close });
-    volume.push({ time, value: Number(r[7]), up: close >= open });
+    const takerBuy = Number(r[10]);
+    volume.push({ time, value: Number(r[7]), up: close >= open, ...(Number.isFinite(takerBuy) ? { takerBuy } : {}) });
   }
   return { candles, volume };
 }
@@ -537,8 +708,12 @@ async function getDeepParts(bn: BnBase, p: PerpInfo, tzShift: number): Promise<D
     bnGet(bn.fapi, `/futures/data/openInterestHist?symbol=${p.symbol}&period=1h&limit=500`).catch(() => [] as any[]),
   ]);
   const oi1hSrc = (oiRows as any[])
-    .map((r) => ({ t: Math.floor(Number(r.timestamp) / 1000), v: Number(r.sumOpenInterestValue) }))
-    .filter((pt) => Number.isFinite(pt.v))
+    .map((r) => ({
+      t: Math.floor(Number(r.timestamp) / 1000),
+      v: Number(r.sumOpenInterestValue),
+      q: Number(r.sumOpenInterest),
+    }))
+    .filter((pt) => Number.isFinite(pt.v) && pt.v > 0 && Number.isFinite(pt.q) && pt.q > 0)
     .sort((a, b) => a.t - b.t);
   const parts: DeepParts = { at: Date.now(), candles: klines.candles, volume: klines.volume, oi1hSrc };
   deepCache.set(p.symbol, parts);
@@ -551,7 +726,7 @@ async function getDeepParts(bn: BnBase, p: PerpInfo, tzShift: number): Promise<D
 function assembleDeep(
   parts: DeepParts,
   base: { candles: Candle[]; volume: VolumeBar[]; times: number[] },
-  oiSrc5m: Array<{ t: number; v: number }>,
+  oiSrc5m: OiHistPoint[],
   fundingSrc: Array<{ t: number; v: number }>,
   tzShift: number,
 ): LongSeries {
@@ -734,7 +909,7 @@ export async function fetchLiveCoin(bn: BnBase, baseSym: string, nowMs: number):
   const flat = (): SeriesPoint[] => times.map((t) => ({ time: t, value: 0 }));
   // raw sources fetched once, shared by the 48h base grid AND the deep grid
   const [oiSrc, fundingSrc] = await Promise.all([
-    getOiSrc(bn, p.symbol).catch(() => [] as Array<{ t: number; v: number }>),
+    getOiSrc(bn, p.symbol).catch(() => [] as OiHistPoint[]),
     getFundingSrc(bn, p.symbol).catch(() => [] as Array<{ t: number; v: number }>),
   ]);
   if (oiSrc.length && seedFromHist(p.base, oiSrc, Date.now())) seededThisSweep++;
@@ -742,7 +917,23 @@ export async function fetchLiveCoin(bn: BnBase, baseSym: string, nowMs: number):
   const oi = oiSrc.length ? resample(times, shift(oiSrc)) : flat();
   const fundingHist = fundingSrc.length ? resample(times, shift(fundingSrc)) : flat();
   const derived = analyze({ candles, volume, oi, fundingHist, oi4hLive: oi4hLiveFromStore(p.base, nowMs) ?? undefined });
-  const coin: Coin = { symbol: p.base, candles, volume, oi, fundingHist, ...derived, earlyAccum: null, long: await pLong };
+  const qty = oiQtyFieldsFromStore(p.base, nowMs);
+  const coldQty = qtyChangeFromHist(oiSrc, nowMs, 10 * 60);
+  const coin: Coin = {
+    symbol: p.base,
+    candles,
+    volume,
+    oi,
+    fundingHist,
+    ...derived,
+    oiQty1h: qty.oiQty1h ?? coldQty?.change1h ?? null,
+    oiQty4h: qty.oiQty4h ?? coldQty?.change4h ?? null,
+    // The cold response carries real quantity even when this on-demand coin
+    // has no live store anchor yet; trends remain null until trusted.
+    oiQty: qty.oiQty ?? coldQty?.current ?? oiSrc[oiSrc.length - 1]?.q ?? null,
+    earlyAccum: null,
+    long: await pLong,
+  };
   const deepParts = await pDeep;
   if (deepParts) {
     try {
@@ -804,7 +995,16 @@ export async function fetchLiveCoinWarm(bn: BnBase, baseSym: string, nowMs: numb
     () => times.map((t) => ({ time: t, value: 0 })),
   );
   const derived = analyze({ candles, volume, oi, fundingHist, oi4hLive: oi4hLiveFromStore(p.base, nowMs) ?? undefined });
-  return { symbol: p.base, candles, volume, oi, fundingHist, ...derived, earlyAccum: null };
+  return {
+    symbol: p.base,
+    candles,
+    volume,
+    oi,
+    fundingHist,
+    ...derived,
+    ...oiQtyFieldsFromStore(p.base, nowMs),
+    earlyAccum: null,
+  };
 }
 
 // Full scan universe: every tradeable Binance USDT perp (exchangeInfo-filtered),
@@ -863,6 +1063,18 @@ function sparkOf(candles: Candle[]): number[] {
   return pts.map((v) => Number(v.toPrecision(5)));
 }
 
+function completedSpotTakerBuyShare4h(coin: Coin): number | null {
+  if (!coin.spotVolume?.length || coin.candles.length < 2) return null;
+  // Both feeds include the currently forming 5m bar. Freeze the calculation at
+  // the previous perp open time so only 48 completed, clock-aligned spot bars
+  // can enter the research feature.
+  const formingOpen = coin.candles[coin.candles.length - 1].time;
+  const rows = coin.spotVolume.filter((v) => v.time < formingOpen).slice(-48);
+  if (rows.length !== 48 || rows.some((v, i) => v.takerBuy == null || (i > 0 && v.time - rows[i - 1].time !== 300))) return null;
+  const total = rows.reduce((a, v) => a + v.value, 0);
+  return total > 0 ? rows.reduce((a, v) => a + (v.takerBuy ?? 0), 0) / total : null;
+}
+
 // Strip the heavy per-bar series down to screener-row metrics.
 export function toLite(coin: Coin): CoinLite {
   const n = coin.candles.length;
@@ -876,6 +1088,8 @@ export function toLite(coin: Coin): CoinLite {
     change24h: ref > 0 ? (last / ref - 1) * 100 : 0,
     oi4h: coin.oi4h,
     oiTrusted: coin.oiTrusted, // P1
+    oiQty1h: coin.oiQty1h ?? null,
+    oiQty4h: coin.oiQty4h ?? null,
     f24h: coin.f24h, // R3
     funding: coin.funding,
     volZ: coin.volZ,
@@ -883,6 +1097,7 @@ export function toLite(coin: Coin): CoinLite {
     lastPrice: last,
     spark: sparkOf(coin.candles),
     oiUsd: coin.oiUsd ?? null,
+    oiQty: coin.oiQty ?? null,
     flushBreakout: coin.flushBreakout,
     earlyAccum: !!coin.earlyAccum,
     spotPump: spotPumpFires(coin), // S2 現貨帶動 — only candidates carry spotCandles; else false
@@ -903,6 +1118,7 @@ export function toLite(coin: Coin): CoinLite {
       oiDropPct: coin.earlyAccum?.oiDropPct ?? null,
       spotVol24h: coin.spotVol24h ?? null, // S1: recording.ts idx 19 reads this
       basisPct: coin.basisPct ?? null, // S1: recording.ts idx 20 reads this
+      spotTakerBuyShare4h: completedSpotTakerBuyShare4h(coin),
     },
   };
 }
@@ -942,11 +1158,11 @@ export async function runRollingScan(
   // Per-coin OI snapshot fan-out → warm store (keyed by base coin). Coins with
   // enough accumulated history read their OI trend from there instead of the
   // cold openInterestHist pool.
-  const bulkOi = new Map<string, number>();
+  const bulkOi = new Map<string, { oiUsd: number; oiQty: number }>();
   try {
     const rows = await fetchBulkOi(bn, universe);
     appendSnapshot(rows, nowMs);
-    for (const r of rows) bulkOi.set(r.instId, r.oiUsd);
+    for (const r of rows) bulkOi.set(r.instId, { oiUsd: r.oiUsd, oiQty: r.oiQty });
   } catch {
     /* no snapshot this sweep — warm coins go stale-guarded, cold path is used */
   }
@@ -995,6 +1211,7 @@ export async function runRollingScan(
     // openInterestHist pool.
     const oiData: (SeriesPoint[] | null)[] = new Array(slice.length).fill(null);
     const coldIdx: number[] = [];
+    const histIdx: number[] = [];
     for (let i = 0; i < slice.length; i++) {
       const cd = candleData[i];
       if (!cd) continue;
@@ -1005,8 +1222,13 @@ export async function runRollingScan(
           warm.map((p) => ({ t: p.t + tzShift, v: p.v })),
         );
         warmCount++;
+        // Upgrade seam: legacy persisted stores contain USD only. Fetch the
+        // same cold history once so seedFromHist can populate quantity without
+        // waiting another 4h of live snapshots.
+        if (!oiQtyChangeFromStore(slice[i].base, nowMs)) histIdx.push(i);
       } else {
         coldIdx.push(i);
+        histIdx.push(i);
       }
     }
     coldCount += coldIdx.length;
@@ -1015,7 +1237,7 @@ export async function runRollingScan(
       // futures/data budget is ~1000 req/5min (3.3/s sustained) — conc 2 /
       // 600ms ≈ 3.1/s keeps a fully-cold sweep inside it
       mapPool(
-        coldIdx,
+        histIdx,
         2,
         (i) => {
           const cd = candleData[i]!;
@@ -1037,8 +1259,8 @@ export async function runRollingScan(
         300,
       ),
     ]);
-    coldIdx.forEach((i, k) => {
-      oiData[i] = coldOi[k];
+    histIdx.forEach((i, k) => {
+      if (oiData[i] == null) oiData[i] = coldOi[k];
     });
 
     const batch: Coin[] = [];
@@ -1054,6 +1276,8 @@ export async function runRollingScan(
         fundingHist,
         oi4hLive: oi4hLiveFromStore(slice[i].base, nowMs) ?? undefined,
       });
+      const qty = oiQtyFieldsFromStore(slice[i].base, nowMs);
+      const bulk = bulkOi.get(slice[i].base);
       const sf = spotFields(cd.candles[cd.candles.length - 1].close, spot.get(slice[i].base));
       batch.push({
         symbol: slice[i].base,
@@ -1062,7 +1286,9 @@ export async function runRollingScan(
         oi,
         fundingHist,
         ...derived,
-        oiUsd: bulkOi.get(slice[i].base) ?? null,
+        ...qty,
+        oiUsd: bulk?.oiUsd ?? null,
+        oiQty: bulk?.oiQty ?? qty.oiQty,
         spotVol24h: sf.spotVol24h,
         basisPct: sf.basisPct,
         earlyAccum: null,

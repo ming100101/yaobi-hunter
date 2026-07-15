@@ -12,6 +12,8 @@ export const SLOT_MS = 15 * 60 * 1000;
 export const F = {
   SYM: 0, PRICE: 1, FUND: 3, STR: 5, FB: 7, EA: 8,
   VOL24H: 9, RET4H: 11, BUYSHARE: 13, SPOTVOL: 19, BASIS: 20,
+  TAKERBUY: 28,
+  SPOT_TAKERBUY: 29,
   EARLY: 24, // S14 早期拉盤 fired (v4; v3-and-earlier rows read undefined → state off)
 } as const;
 
@@ -129,7 +131,9 @@ export const H24 = 96; // 24h in slots
 
 export interface Sample {
   mfe: number; // max favourable excursion (high-based), fraction
+  mae: number; // max adverse excursion, fraction
   ret: number; // close-to-close return at the horizon, fraction
+  coverage: number; // observed symbol slots / requested horizon slots
 }
 
 export interface StateSummary {
@@ -176,21 +180,25 @@ export function forward(idx: RecIndex, sym: string, slot: number, hSlots: number
   const entry = pm.get(slot);
   if (!entry || entry <= 0) return null;
   let hi = -Infinity;
+  let lo = Infinity;
   let lastP = NaN;
   let lastSlot = -1;
+  let observed = 0;
   for (const s of idx.slots) {
     if (s <= slot) continue;
     if (s > slot + hSlots) break;
     const p = pm.get(s);
     if (p == null || p <= 0) continue;
     hi = Math.max(hi, p);
+    lo = Math.min(lo, p);
+    observed++;
     if (s > lastSlot) {
       lastSlot = s;
       lastP = p;
     }
   }
   if (lastSlot < 0) return null; // no forward data
-  return { mfe: hi / entry - 1, ret: lastP / entry - 1 };
+  return { mfe: hi / entry - 1, mae: lo / entry - 1, ret: lastP / entry - 1, coverage: observed / hSlots };
 }
 
 // S4d — structural earliness of one event. Walk the recorded price path S..S+24h;
@@ -287,6 +295,21 @@ export function evalStates(
         const spotVol = r[F.SPOTVOL] as number | null;
         if (basis == null || spotVol == null) return false;
         return (r[F.FUND] as number) >= 0.01 && basis >= 0.1 && spotVol < 0.5 * (r[F.VOL24H] as number);
+      },
+    },
+    {
+      key: 'spot-led-v1',
+      on: (r) => {
+        const basis = r[F.BASIS] as number | null;
+        const spotVol = r[F.SPOTVOL] as number | null;
+        const takerBuy = r.length > F.SPOT_TAKERBUY ? (r[F.SPOT_TAKERBUY] as number | null) : null;
+        if (basis == null || spotVol == null || takerBuy == null) return false;
+        return (
+          (r[F.RET4H] as number) >= 2 &&
+          basis <= 0 &&
+          spotVol >= (r[F.VOL24H] as number) &&
+          takerBuy > 0.55
+        );
       },
     },
   ];

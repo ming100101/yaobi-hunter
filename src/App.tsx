@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type {
   Coin,
   CoinLite,
@@ -33,14 +33,17 @@ import type { PaperState } from './lib/paper';
 import { hydrateSignalLog } from './lib/signalLog';
 import { top10Ranks } from './lib/rank';
 import ScreenerList from './components/ScreenerList';
-import CoinDetail from './components/CoinDetail';
 import SearchBar from './components/SearchBar';
-import SettingsView from './components/SettingsView';
-import StrategyView from './components/StrategyView';
-import HistoryView from './components/HistoryView';
-import PushWatchView from './components/PushWatchView';
 import BrandMark from './components/BrandMark';
-import type { AppTab } from './components/NavTabs';
+import NavTabs, { type AppTab } from './components/NavTabs';
+
+// The scan list is the cold-start surface. Charts and secondary pages are
+// embedded as separate chunks and parsed only when the user opens them.
+const CoinDetail = lazy(() => import('./components/CoinDetail'));
+const SettingsView = lazy(() => import('./components/SettingsView'));
+const StrategyView = lazy(() => import('./components/StrategyView'));
+const HistoryView = lazy(() => import('./components/HistoryView'));
+const PushWatchView = lazy(() => import('./components/PushWatchView'));
 
 // 15-min recording-slot size. Scanning is now continuous (back-to-back), but
 // record/paper/signal-times are still written once per 15-min slot (see the gate
@@ -60,6 +63,37 @@ const PAPER_DRIVER_TTL = 5 * 60 * 1000;
 // S3 micro-scan: warm-only re-check of top candidates between full sweeps
 const MICRO_MS = 75_000;
 const MICRO_BACKOFF_MS = 10 * 60 * 1000; // double the cadence for this long after a 429
+
+function TabChunkFallback({ tab, onTab }: { tab: AppTab; onTab: (tab: AppTab) => void }) {
+  return (
+    <div className="page scan-loading-page" aria-busy="true">
+      <div className="topbar">
+        <div className="brand">
+          <BrandMark />
+          <div>
+            <div className="brand-name">妖幣獵手</div>
+            <div className="brand-sub">正在打開頁面</div>
+          </div>
+        </div>
+        <NavTabs tab={tab} onTab={onTab} />
+      </div>
+      <div className="card scan-loading-card">
+        <div className="spinner" />
+        <div><strong>載入頁面中…</strong></div>
+      </div>
+    </div>
+  );
+}
+
+function DetailChunkFallback() {
+  return (
+    <div className="loading-screen" aria-busy="true">
+      <div className="loading-brand"><BrandMark size={44} /><div className="brand-name">妖幣獵手</div></div>
+      <div className="spinner" />
+      <div className="muted">正在打開圖表…</div>
+    </div>
+  );
+}
 
 function sortLite(coins: CoinLite[]): CoinLite[] {
   return [...coins].sort(
@@ -501,47 +535,34 @@ export default function App() {
     setFetchErr(undefined);
   };
 
-  if (!scan) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-brand">
-          <BrandMark size={44} />
-          <div className="brand-name">妖幣獵手</div>
-        </div>
-        <div className="spinner" />
-        <div className="muted">
-          {progress ? `正在掃描 ${progress.done}/${progress.total}…` : '正在載入市場資料…'}
-        </div>
-      </div>
-    );
-  }
-
   if (detail) {
     return (
-      <CoinDetail
-        key={detail.coin.symbol}
-        coin={detail.coin}
-        scannedAt={detail.at}
-        source={scan.source}
-        tf={tf}
-        onTf={setTf}
-        onBack={closeDetail}
-        backLabel={
-          detail.origin === 'pushes'
-            ? '← 返回推送監察'
-            : detail.origin === 'history'
-              ? '← 返回記錄'
-              : detail.origin === 'strategy'
-                ? '← 返回策略'
-                : '← 返回掃描列表'
-        }
-        times={sigTimes[detail.coin.symbol]}
-        pinned={pinned.has(detail.coin.symbol)}
-        onTogglePin={() => togglePin(detail.coin.symbol)}
-        paper={paper}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-      />
+      <Suspense fallback={<DetailChunkFallback />}>
+        <CoinDetail
+          key={detail.coin.symbol}
+          coin={detail.coin}
+          scannedAt={detail.at}
+          source={scan?.source ?? 'binance'}
+          tf={tf}
+          onTf={setTf}
+          onBack={closeDetail}
+          backLabel={
+            detail.origin === 'pushes'
+              ? '← 返回推送監察'
+              : detail.origin === 'history'
+                ? '← 返回記錄'
+                : detail.origin === 'strategy'
+                  ? '← 返回策略'
+                  : '← 返回掃描列表'
+          }
+          times={sigTimes[detail.coin.symbol]}
+          pinned={pinned.has(detail.coin.symbol)}
+          onTogglePin={() => togglePin(detail.coin.symbol)}
+          paper={paper}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+      </Suspense>
     );
   }
 
@@ -558,7 +579,7 @@ export default function App() {
     );
   }
 
-  const searchOverlay = searchOpen ? (
+  const searchOverlay = searchOpen && scan ? (
     <SearchBar
       source={scan.source}
       scanCoins={scan.coins}
@@ -578,7 +599,9 @@ export default function App() {
   if (tab === 'settings') {
     return (
       <>
-        <SettingsView tab={tab} onTab={switchTab} />
+        <Suspense fallback={<TabChunkFallback tab={tab} onTab={switchTab} />}>
+          <SettingsView tab={tab} onTab={switchTab} />
+        </Suspense>
         {searchOverlay}
       </>
     );
@@ -587,7 +610,9 @@ export default function App() {
   if (tab === 'strategy') {
     return (
       <>
-        <StrategyView tab={tab} onTab={switchTab} />
+        <Suspense fallback={<TabChunkFallback tab={tab} onTab={switchTab} />}>
+          <StrategyView tab={tab} onTab={switchTab} paper={paper} />
+        </Suspense>
         {searchOverlay}
       </>
     );
@@ -596,7 +621,9 @@ export default function App() {
   if (tab === 'history') {
     return (
       <>
-        <HistoryView tab={tab} onTab={switchTab} onSelect={openCoin} />
+        <Suspense fallback={<TabChunkFallback tab={tab} onTab={switchTab} />}>
+          <HistoryView tab={tab} onTab={switchTab} onSelect={openCoin} />
+        </Suspense>
         {searchOverlay}
       </>
     );
@@ -605,15 +632,42 @@ export default function App() {
   if (tab === 'pushes') {
     return (
       <>
-        <PushWatchView
-          tab={tab}
-          onTab={switchTab}
-          coins={scan.coins}
-          source={scan.source}
-          onSelect={openCoin}
-        />
+        <Suspense fallback={<TabChunkFallback tab={tab} onTab={switchTab} />}>
+          <PushWatchView
+            tab={tab}
+            onTab={switchTab}
+            coins={scan?.coins ?? []}
+            source={scan?.source ?? 'binance'}
+            onSelect={openCoin}
+          />
+        </Suspense>
         {searchOverlay}
       </>
+    );
+  }
+
+  if (!scan) {
+    return (
+      <div className="page scan-loading-page">
+        <div className="topbar">
+          <div className="brand">
+            <BrandMark />
+            <div>
+              <div className="brand-name">妖幣獵手</div>
+              <div className="brand-sub">市場掃描準備中 · 推送與設定仍可使用</div>
+            </div>
+          </div>
+          <NavTabs tab={tab} onTab={switchTab} />
+        </div>
+        <div className="card scan-loading-card">
+          <div className="spinner" />
+          <div>
+            <strong>{progress ? `正在掃描 ${progress.done}/${progress.total}` : '正在載入市場資料'}</strong>
+            <p className="muted">Binance繁忙或限速時，推送監察、策略、記錄同設定頁仍然可以直接打開。</p>
+            {loadErr && <p className="set-err">{loadErr}</p>}
+          </div>
+        </div>
+      </div>
     );
   }
 

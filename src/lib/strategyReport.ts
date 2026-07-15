@@ -45,6 +45,7 @@ export const STABLE_BASES = new Set([
 ]);
 
 export type StratMode = 'ladder' | 'allout';
+export type StratEntryMode = 'confirmed' | 'signal';
 export type FillKind = 'tp1' | 'tp2' | 'allout' | 'sl' | 'eod' | 'mark';
 export interface Fill {
   kind: FillKind;
@@ -60,6 +61,11 @@ export interface StratTrade {
   fills: Fill[];
   roi: number; // realized + (for open) unrealized, margin units
   open: boolean; // still holding a runner at the latest slot (today only)
+  signalTs: number;
+  signalPrice: number;
+  entryMode: StratEntryMode;
+  entryDelayMin: number;
+  entrySlippagePct: number;
 }
 export interface StratSide {
   long: StratTrade[];
@@ -96,6 +102,9 @@ function walkTrade(
   dayEndSlot: number,
   final: boolean,
   mode: StratMode,
+  signalTs: number,
+  signalPrice: number,
+  entryMode: StratEntryMode,
 ): StratTrade | null {
   if (!pm || !(entry > 0)) return null;
   const sign = side === 'long' ? 1 : -1;
@@ -155,6 +164,11 @@ function walkTrade(
     fills,
     roi: fills.reduce((s, f) => s + f.roi, 0),
     open: !final && rem > 1e-12,
+    signalTs,
+    signalPrice,
+    entryMode,
+    entryDelayMin: (entrySlot * SLOT_MS - signalTs) / 60_000,
+    entrySlippagePct: (entry / signalPrice - 1) * 100,
   };
 }
 
@@ -169,6 +183,7 @@ function simulateSide(
   idx: RecIndex,
   todayStart: number,
   mode: StratMode,
+  entryMode: StratEntryMode,
 ): Map<number, { trades: StratTrade[]; skipped: number }> {
   const byDay = new Map<number, { trades: StratTrade[]; skipped: number }>();
   const busyUntil = new Map<string, number>(); // `${day}|${sym}` -> slot busy through
@@ -182,7 +197,26 @@ function simulateSide(
       byDay.set(day, bucket);
     }
     const dayEndSlot = (day + DAY_MS) / SLOT_MS;
-    const t = walkTrade(idx.priceAt.get(e.sym), e.slot, e.price, side, dayEndSlot, day !== todayStart, mode);
+    const entrySlot = entryMode === 'confirmed' ? e.slot + 1 : e.slot;
+    const entry = entryMode === 'confirmed' ? idx.priceAt.get(e.sym)?.get(entrySlot) : e.price;
+    // Confirmed execution requires the immediately-next complete 15m slot. A
+    // gap is skipped rather than silently filled later at a convenient price.
+    const contiguous = entryMode === 'signal' || idx.bySlot.has(entrySlot);
+    const t =
+      contiguous && entry != null && entrySlot < dayEndSlot
+        ? walkTrade(
+            idx.priceAt.get(e.sym),
+            entrySlot,
+            entry,
+            side,
+            dayEndSlot,
+            day !== todayStart,
+            mode,
+            e.ts,
+            e.price,
+            entryMode,
+          )
+        : null;
     if (!t) {
       bucket.skipped++;
       continue;
@@ -197,7 +231,13 @@ function simulateSide(
 
 // Newest → oldest, only days that actually have edges, capped at `days`. Today is
 // marked `final: false`. Long and short are independent simulations.
-export function buildDailyReport(idx: RecIndex, days: number, nowMs: number, mode: StratMode = 'ladder'): StratDay[] {
+export function buildDailyReport(
+  idx: RecIndex,
+  days: number,
+  nowMs: number,
+  mode: StratMode = 'ladder',
+  entryMode: StratEntryMode = 'confirmed',
+): StratDay[] {
   const todayStart = dayStartOf(nowMs);
   const slotSet = new Set(idx.slots);
   const prep = (edges: EdgeEvent[]) =>
@@ -205,10 +245,10 @@ export function buildDailyReport(idx: RecIndex, days: number, nowMs: number, mod
 
   const fbEdges = prep(risingEdges(idx, (r: RecCoin) => r[F.FB] === 1));
   const s70Edges = prep(risingEdges(idx, (r: RecCoin) => (r[F.STR] as number) >= 70));
-  const fbL = simulateSide(fbEdges, 'long', idx, todayStart, mode);
-  const fbS = simulateSide(fbEdges, 'short', idx, todayStart, mode);
-  const sL = simulateSide(s70Edges, 'long', idx, todayStart, mode);
-  const sS = simulateSide(s70Edges, 'short', idx, todayStart, mode);
+  const fbL = simulateSide(fbEdges, 'long', idx, todayStart, mode, entryMode);
+  const fbS = simulateSide(fbEdges, 'short', idx, todayStart, mode, entryMode);
+  const sL = simulateSide(s70Edges, 'long', idx, todayStart, mode, entryMode);
+  const sS = simulateSide(s70Edges, 'short', idx, todayStart, mode, entryMode);
 
   const bucket = (m: Map<number, { trades: StratTrade[]; skipped: number }>, day: number) =>
     m.get(day) ?? { trades: [], skipped: 0 };

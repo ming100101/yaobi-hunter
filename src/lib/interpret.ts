@@ -3,6 +3,8 @@ import { aggregateCandles, aggregateLast, aggregateVolume } from './aggregate';
 import { detectFlushBreakout } from './analyze';
 import { ema } from './indicators';
 import { fmtPct } from './format';
+import { FLUSH_FORWARD_NOTE, oldStudyEvidence } from './evidenceCopy';
+import { evaluateBoardingB2 } from './boardingB2';
 
 // ---------------------------------------------------------------------------
 // Pattern interpretation library (型態解讀).
@@ -549,6 +551,15 @@ export function wbottomSignals(coin: Coin): [0 | 1, 0 | 1, 0 | 1] | null {
 // sweep-meta recording flags are deferred until long-series plumbing exists
 // (E1 re-tests via the harness directly, no recordings dependency).
 function computeBoardingB2(coin: Coin): Ctx['boardingB2'] {
+  const c60Raw = coin.long?.candles ?? aggregateCandles(coin.candles, 12);
+  const v60Raw = coin.long?.volume ?? aggregateVolume(coin.volume, c60Raw, 12);
+  const signal = evaluateBoardingB2(c60Raw.slice(0, -1), v60Raw.slice(0, -1));
+  return signal ? { volZ1h: signal.volZ1h, hoursBelow: signal.hoursBelow } : null;
+}
+
+// Frozen pre-v1 copy retained temporarily as a readable parity reference. It
+// has no caller; production uses the shared completed-bar implementation above.
+function computeBoardingB2Legacy(coin: Coin): Ctx['boardingB2'] {
   const c60 = coin.long?.candles ?? aggregateCandles(coin.candles, 12);
   const v60 = coin.long?.volume ?? aggregateVolume(coin.volume, c60, 12);
   const H = Math.min(c60.length, v60.length);
@@ -1031,7 +1042,7 @@ const DETECTORS: Detector[] = [
           priority: 8,
           detail:
             `價格 4h ${r1(c.ret4h)}、OI 幾乎未動（${p1(c.oi4h)}），但現貨量爆升（量Z ${c.spotVolZ!.toFixed(1)}）且現貨不落後（基差 ${c.basisPct!.toFixed(2)}%），升勢由真實現貨買盤扛住。` +
-            `回測（114 幣、37 日）：+10%/24h 命中率 17.3% vs 基準 9.6%（lift ×1.79，現貨量Z 為驅動；純動能僅 ×1.27），僅供排序參考，非進場訊號。`,
+            oldStudyEvidence('114 幣、37 日，+10%/24h 命中率 17.3% vs 基準 9.6%（lift ×1.79；現貨量Z 為驅動，純動能 ×1.27）'),
         }
       : null,
   // S2 現貨暗中吸籌 — recording-only (gate FAILED ×0.54); gated by SPOT_ACCUM_SHIPPED.
@@ -1095,7 +1106,7 @@ const DETECTORS: Detector[] = [
           title: '壓縮突破',
           tone: 'bull',
           priority: 7,
-          detail: `布林帶收入 Keltner 通道（TTM 壓縮）${c.sqzBreakout.sinceH} 小時後，放量升穿盤整高點（1H 量Z ${c.sqzBreakout.volZ1h.toFixed(1)}）。回測 lift ×1.42（±25% 穩健 ×1.29-1.39），排序參考，非進場訊號。`,
+          detail: `布林帶收入 Keltner 通道（TTM 壓縮）${c.sqzBreakout.sinceH} 小時後，放量升穿盤整高點（1H 量Z ${c.sqzBreakout.volZ1h.toFixed(1)}）。${oldStudyEvidence('lift ×1.42（±25% 穩健 ×1.29-1.39）')}`,
         }
       : null,
   // S9 增倉突破 — flush→rebuild→breakout, the CAP-shaped complement of ⚡.
@@ -1110,7 +1121,7 @@ const DETECTORS: Detector[] = [
           priority: 8,
           detail:
             `48h 內 OI 曾縮倉 ≥8% 之後重建(oi4h ${p1(c.rebuildR1.oi4h)}),帶量突破 24h 高(1H 量Z ${c.rebuildR1.volZ1h.toFixed(1)})— ⚡ 嘅互補形態(CAP 型:縮完倉、重建晒先突破)。` +
-            `回測(150 幣、37 日):+10%/24h 命中 26.7% vs 基準 10.3%(lift ×2.60,全穩健 ≥×1.83,中位 8h 掂 +10%);惟 24h 平均回報僅 +0.3%,排序參考,非進場訊號。`,
+            oldStudyEvidence('150 幣、37 日，+10%/24h 命中 26.7% vs 基準 10.3%（lift ×2.60；全穩健 ≥×1.83；中位 8h 掂 +10%）；24h 平均回報僅 +0.3%'),
         }
       : null,
   // S13 處女增倉 — virgin OI expansion (no flush anywhere in the window) breaks
@@ -1126,7 +1137,7 @@ const DETECTORS: Detector[] = [
           priority: 8,
           detail:
             `48h 內 OI 從未冚倉(零 flush)、純增倉擴張(oi24h ${p1(c.virginV2.oi24h)}、oi4h ${p1(c.virginV2.oi4h)}),帶量突破 24h 高(1H 量Z ${c.virginV2.volZ1h.toFixed(1)})— 增倉突破嘅互補形態(EVAA 型:由頭到尾冇人冚倉)。` +
-            `回測(296 幣、37 日 Binance):+10%/24h 命中 39.9% vs 基準 14.5%(lift ×2.76,全穩健 ≥×1.85);惟 24h 平均回報極薄,排序參考,非進場訊號。`,
+            oldStudyEvidence('296 幣、37 日 Binance，+10%/24h 命中 39.9% vs 基準 14.5%（lift ×2.76；全穩健 ≥×1.85）；24h 平均回報極薄'),
         }
       : null,
   // S7 上車位 — long-suppressed coin fresh-crosses EMA20 on volume, pre-pump
@@ -1139,7 +1150,7 @@ const DETECTORS: Detector[] = [
           title: '上車位',
           tone: 'bull',
           priority: 7,
-          detail: `連續 ${c.boardingB2.hoursBelow}h 收喺 EMA50 之下後，放量收復 EMA20（1H 量Z ${c.boardingB2.volZ1h.toFixed(1)}），且未追價（4h 未拉、唔喺區間頂）。回測 lift ×2.04（全 robustness ≥×1.40，中位提前 11h 掂 +10%），排序參考，非進場訊號。`,
+          detail: `連續 ${c.boardingB2.hoursBelow}h 收喺 EMA50 之下後，放量收復 EMA20（1H 量Z ${c.boardingB2.volZ1h.toFixed(1)}），且未追價（4h 未拉、唔喺區間頂）。${oldStudyEvidence('lift ×2.04（全 robustness ≥×1.40；中位提前 11h 掂 +10%）')}`,
         }
       : null,
   // squeeze-setup — recording-only (×0.85-0.97, below baseline); gate off.
@@ -1308,7 +1319,10 @@ export function interpret(coin: Coin): Insight[] {
       priority: 10,
       detail:
         `未平倉量自 48h 高位縮 ${fb.oiDropPct.toFixed(1)}% 後，帶量突破 24h 盤整區（1H 量Z ${fb.volZ1h.toFixed(1)}）。` +
-        `回測（154 幣、37 日）：+15%/24h 命中率 9.1% vs 基準 4.5%（lift ×2.0），僅供排序參考。`,
+        oldStudyEvidence(
+          '154 幣、37 日，+15%/24h 命中率 9.1% vs 基準 4.5%（lift ×2.0）',
+          FLUSH_FORWARD_NOTE,
+        ),
       next: '若回測突破位不破 → 依出場計畫（TP1/TP2/SL）分批執行；若收回盤整區內 → 假突破，訊號失效。',
     });
   }
@@ -1325,7 +1339,7 @@ export function interpret(coin: Coin): Insight[] {
       priority: 8,
       detail:
         `縮倉築底中，且散戶多空比 24h 降 ${ea.lsDropPct.toFixed(1)}%、相對 BTC 強 ${fmtPct(ea.rsPct, 1)}。` +
-        `回測（154 幣、37 日）：後續 72-96h 平均回報 +1.1~1.3%（基準 -1%）、回撤淺 30%，但命中 lift 僅 ×1.0-1.2 — 觀察名單參考，非進場訊號。`,
+        oldStudyEvidence('154 幣、37 日，後續 72-96h 平均回報 +1.1~1.3%（基準 -1%）、回撤淺 30%，命中 lift ×1.0-1.2'),
       next: '若之後帶量突破盤整高點（升級為 ⚡）→ 先等訊號再談進場；若 OI 回升但價轉弱 → 移出觀察名單。',
     });
   }

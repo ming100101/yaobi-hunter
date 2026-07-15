@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   type Coin,
   type EntryKind,
@@ -9,6 +9,7 @@ import {
   type Timeframe,
 } from '../types';
 import type { PaperState } from '../lib/paper';
+import { parseDeliveredSignals, type SignalNotifyEvent } from '../lib/signalEvents';
 import { ChartSync } from '../lib/chartSync';
 import { aggregateForTf } from '../lib/aggregate';
 import { interpret } from '../lib/interpret';
@@ -35,7 +36,7 @@ const SIGNAL_LABELS: Array<[keyof Signals, string]> = [
   ['fundsFirst', '低位資金先動'],
   ['mildRise', '1h 溫和抬升'],
   ['oiHealthy', 'OI 健康增加'],
-  ['buyHealthy', '主動買盤健康'],
+  ['buyHealthy', '上升 K 線成交量健康'],
 ];
 
 function Stat({ label, value, cls }: { label: string; value: ReactNode; cls?: string }) {
@@ -104,9 +105,32 @@ export default function CoinDetail({
   // this coin's paper-trade fills → buy/sell markers on the K-line. Live data
   // only: demo candles are synthetic, so real trade times wouldn't line up.
   const fills = useMemo(
-    () => (source !== 'demo' && paper ? paper.ledger.filter((r) => r.sym === coin.symbol) : []),
+    () => (source !== 'demo' && paper ? paper.confirmed?.ledger.filter((r) => r.sym === coin.symbol) ?? [] : []),
     [source, paper, coin.symbol],
   );
+  const [deliveredSignals, setDeliveredSignals] = useState<SignalNotifyEvent[]>([]);
+  useEffect(() => {
+    if (source === 'demo') {
+      setDeliveredSignals([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    const now = Date.now();
+    const from = new Date(now - 15 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const to = new Date(now).toISOString().slice(0, 10);
+    setDeliveredSignals([]);
+    fetch(`/signal-events?symbol=${encodeURIComponent(coin.symbol)}&from=${from}&to=${to}`, {
+      signal: ctrl.signal,
+    })
+      .then((res) => (res.ok ? res.text() : ''))
+      .then((text) => {
+        if (!ctrl.signal.aborted) setDeliveredSignals(parseDeliveredSignals(text, coin.symbol));
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setDeliveredSignals([]);
+      });
+    return () => ctrl.abort();
+  }, [coin.symbol, source]);
   // pattern read runs on the raw scan-resolution data, independent of display tf.
   // Merge each live snapshot into the coin's 24h log so reads persist (with their
   // detected time + candle mark) even after strength drops — cleared only at 24h.
@@ -207,7 +231,16 @@ export default function CoinDetail({
       {/* F1: theme in the key remounts the charts on a theme switch —
           lightweight-charts reads css tokens at create time only (cssVar),
           so without the remount they'd keep the old palette */}
-      <PricePanel key={`price-${theme}`} coin={view} sync={sync} tf={tf} onTf={onTf} fills={fills} insights={insights} />
+      <PricePanel
+        key={`price-${theme}`}
+        coin={view}
+        sync={sync}
+        tf={tf}
+        onTf={onTf}
+        fills={fills}
+        signals={deliveredSignals}
+        insights={insights}
+      />
       <OIPanel key={`oi-${theme}`} coin={view} sync={sync} tf={tf} />
       <FundingPanel key={`funding-${theme}`} coin={view} sync={sync} tf={tf} />
       <StrengthPanel key={`strength-${theme}`} coin={view} sync={sync} tf={tf} />

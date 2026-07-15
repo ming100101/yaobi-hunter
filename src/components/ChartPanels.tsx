@@ -23,6 +23,7 @@ import {
 } from 'lightweight-charts';
 import { STRENGTH_THRESHOLD, TIMEFRAMES, type Candle, type Coin, type SeriesPoint, type Timeframe } from '../types';
 import type { PaperAction, PaperLedgerRow } from '../lib/paper';
+import type { SignalNotifyEvent } from '../lib/signalEvents';
 import type { Insight } from '../lib/interpret';
 import { signalColor } from '../lib/signalColors';
 import { cssVar } from '../lib/cssVar';
@@ -92,6 +93,23 @@ const SELL_LABEL: Record<Exclude<PaperAction, 'open'>, string> = {
   timeout: '逾時',
 };
 
+function markerBar(candles: Candle[], tsSec: number): number | null {
+  if (candles.length === 0 || tsSec < candles[0].time) return null;
+  let lo = 0;
+  let hi = candles.length - 1;
+  let res = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (candles[mid].time <= tsSec) {
+      res = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return candles[res].time;
+}
+
 // Turn this coin's paper fills into candle markers: 開倉 = green up-triangle
 // below the bar (buy), every close (TP/SL/timeout) = red down-triangle above the
 // bar (sell). Each fill's ms timestamp is snapped to the bar it falls in (bars
@@ -123,12 +141,40 @@ function paperMarkers(candles: Candle[], fills: PaperLedgerRow[]): SeriesMarker<
     const bar = barFor(Math.floor(f.ts / 1000));
     if (bar == null) continue;
     if (f.action === 'open') {
-      markers.push({ time: bar as UTCTimestamp, position: 'belowBar', color: cssVar('--up'), shape: 'arrowUp', text: `買 ${fmtPrice(f.px)}`, size: 1 });
+      markers.push({ time: bar as UTCTimestamp, position: 'belowBar', color: cssVar('--up'), shape: 'arrowUp', text: `確認盤 ${fmtPrice(f.px)}`, size: 1 });
     } else {
       markers.push({ time: bar as UTCTimestamp, position: 'aboveBar', color: cssVar('--down'), shape: 'arrowDown', text: SELL_LABEL[f.action], size: 1 });
     }
   }
   markers.sort((a, b) => (a.time as number) - (b.time as number));
+  return markers;
+}
+
+const TG_MARKER_LABEL: Record<SignalNotifyEvent['cls'], string> = {
+  fb: '⚡ TG卡',
+  rb: '📈 TG卡',
+  vg: '🚀 TG卡',
+};
+
+function tgMarkers(candles: Candle[], signals: SignalNotifyEvent[]): SeriesMarker<UTCTimestamp>[] {
+  const colors: Record<SignalNotifyEvent['cls'], string> = {
+    fb: cssVar('--warn'),
+    rb: cssVar('--up'),
+    vg: cssVar('--accent'),
+  };
+  const markers: SeriesMarker<UTCTimestamp>[] = [];
+  for (const signal of signals) {
+    const bar = markerBar(candles, Math.floor(signal.deliveredAt / 1000));
+    if (bar == null) continue;
+    markers.push({
+      time: bar as UTCTimestamp,
+      position: 'belowBar',
+      color: colors[signal.cls],
+      shape: 'circle',
+      text: `${TG_MARKER_LABEL[signal.cls]} ${fmtPrice(signal.px)}`,
+      size: 1,
+    });
+  }
   return markers;
 }
 
@@ -277,11 +323,13 @@ export function PricePanel({
   tf,
   onTf,
   fills = [],
+  signals = [],
   insights = [],
 }: PanelProps & {
   tf: Timeframe;
   onTf: (t: Timeframe) => void;
   fills?: PaperLedgerRow[];
+  signals?: SignalNotifyEvent[];
   insights?: Insight[];
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -407,13 +455,17 @@ export function PricePanel({
       price: coin.plan.entry,
       title: coin.plan.kind === 'breakout' ? '突破' : coin.plan.kind === 'pullback' ? '回調' : '收復',
     });
-    st.markers.setMarkers(paperMarkers(coin.candles, fills));
+    st.markers.setMarkers(
+      [...tgMarkers(coin.candles, signals), ...paperMarkers(coin.candles, fills)].sort(
+        (a, b) => (a.time as number) - (b.time as number),
+      ),
+    );
     st.insightMarkers.setMarkers(insightMarkers(coin.candles, insights));
     const last = coin.candles[coin.candles.length - 1];
     st.lastBar = { open: last.open, high: last.high, low: last.low, close: last.close };
     renderOhlcLegend(st.legendEl, st.lastBar);
     if (needsRangeReset(coin.candles.length)) initialRange(st.chart, coin.candles.length, tf);
-  }, [coin, fills, insights, tf, needsRangeReset]);
+  }, [coin, fills, signals, insights, tf, needsRangeReset]);
 
   const last = coin.candles[coin.candles.length - 1].close;
   const dirCls = pctSign(coin.change1h) >= 0 ? 'up-badge' : 'down-badge';
@@ -441,6 +493,12 @@ export function PricePanel({
           <span className="legend-key">
             <i className="legend-dot dashed" />
             進場價
+          </span>
+          <span className="legend-key" title="卡面掃描價，只作 Telegram 參考，不是成交價">
+            ⚡ TG卡價
+          </span>
+          <span className="legend-key" title="只顯示確認盤實際建立的模擬開倉">
+            ▲ 確認盤
           </span>
         </div>
       }

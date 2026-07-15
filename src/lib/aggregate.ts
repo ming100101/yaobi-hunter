@@ -37,9 +37,20 @@ export function aggregateVolume(base: VolumeBar[], candles: Candle[], mult: numb
   for (let i = 0; i < base.length; i += mult, b++) {
     const end = Math.min(i + mult, base.length);
     let sum = 0;
-    for (let j = i; j < end; j++) sum += base[j].value;
+    let takerBuy = 0;
+    let hasTakerBuy = true;
+    for (let j = i; j < end; j++) {
+      sum += base[j].value;
+      if (base[j].takerBuy == null) hasTakerBuy = false;
+      else takerBuy += base[j].takerBuy!;
+    }
     const c = candles[b];
-    out.push({ time: base[i].time, value: sum, up: c ? c.close >= c.open : base[end - 1].up });
+    out.push({
+      time: base[i].time,
+      value: sum,
+      up: c ? c.close >= c.open : base[end - 1].up,
+      ...(hasTakerBuy ? { takerBuy } : {}),
+    });
   }
   return out;
 }

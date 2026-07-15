@@ -15,3 +15,22 @@ backtest-data/
 *.log
 .DS_Store
 Thumbs.db
+
+# local runtime data and secrets
+.env
+.env.*
+!.env.example
+kv.json
+recordings/
+entry-watch.json
+deep-reclaim.json
+market-1h.json
+strategy-shadow.json
+strategy-lab.json
+KILL
+
+# generated public release archives
+release/.stage/
+release/.stage-build/
+release/*.zip
+release/SHA256SUMS.txt
