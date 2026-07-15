@@ -6,7 +6,7 @@ It includes a live desktop dashboard, Telegram alerts, a 24/7 background recorde
 
 > Educational market-analysis software only. It does not place trades and is not financial advice.
 
-[Download the latest Windows Public Beta](https://github.com/ming100101/yaobi-hunter/releases/latest)
+[Download the latest Windows Public Beta](https://github.com/ming100101/yaobi-hunter/releases)
 · [Project website](https://ming100101.github.io/yaobi-hunter/)
 · [Risk disclaimer](DISCLAIMER.md)
 · [Privacy](PRIVACY.md)
