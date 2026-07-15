@@ -344,10 +344,12 @@ function tgSend(token, chatId, text, cb, options = {}) {
       resp.on('end', () => {
         try {
           const j = JSON.parse(d);
+          const messageId = Number(j.result && j.result.message_id);
+          const sentAtSeconds = Number(j.result && j.result.date);
           cb(
-            j.ok
-              ? { ok: true, messageId: Number(j.result && j.result.message_id) || undefined }
-              : { ok: false, error: j.description || `http ${resp.statusCode}` },
+            j.ok === true && Number.isInteger(messageId) && messageId > 0 && Number.isInteger(sentAtSeconds) && sentAtSeconds > 0
+              ? { ok: true, messageId, deliveredAt: sentAtSeconds * 1000 }
+              : { ok: false, error: j.description || 'Telegram success response missing message proof' },
           );
         } catch {
           cb({ ok: false, error: `http ${resp.statusCode}` });

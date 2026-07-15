@@ -79,9 +79,9 @@ function tempLocal(): string {
   return dir;
 }
 
-function telegramResponse(ok: boolean, messageId = 321): Response {
+function telegramResponse(ok: boolean, messageId = 321, sentAtSeconds = Math.floor(Date.now() / 1000)): Response {
   return new Response(
-    JSON.stringify(ok ? { ok: true, result: { message_id: messageId } } : { ok: false, description: 'known failure' }),
+    JSON.stringify(ok ? { ok: true, result: { message_id: messageId, date: sentAtSeconds } } : { ok: false, description: 'known failure' }),
     { status: ok ? 200 : 400, headers: { 'content-type': 'application/json' } },
   );
 }
@@ -91,12 +91,24 @@ await test('Telegram reply threading uses reply_parameters and returns message_i
   const prior = globalThis.fetch;
   globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
     body = JSON.parse(String(init?.body));
-    return telegramResponse(true, 987);
+    return telegramResponse(true, 987, 1_784_000_000);
   }) as typeof fetch;
   try {
     const out = await sendTelegram('token', 'chat', 'hello', { replyToMessageId: 42 });
-    assert.deepEqual(out, { ok: true, messageId: 987 });
+    assert.deepEqual(out, { ok: true, messageId: 987, deliveredAt: 1_784_000_000_000 });
     assert.deepEqual(body?.reply_parameters, { message_id: 42, allow_sending_without_reply: true });
+  } finally {
+    globalThis.fetch = prior;
+  }
+});
+
+await test('Telegram success without message id/date is not accepted as delivery', async () => {
+  const prior = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 })) as typeof fetch;
+  try {
+    const out = await sendTelegram('token', 'chat', 'hello');
+    assert.equal(out.ok, false);
+    assert.match(out.error ?? '', /message proof/);
   } finally {
     globalThis.fetch = prior;
   }
@@ -130,7 +142,7 @@ await test('successful first Telegram writes v3 provenance, consumes cooldown, a
     assert.equal(result.watchable.length, 1);
     assert.equal(result.watchable[0].followupEnabled, false, 'failed historical gate must force record-only mode');
     assert.equal(result.delivered[0].deliveredAt, result.delivered[0].ts);
-    assert.ok(result.delivered[0].attemptedAt <= result.delivered[0].deliveredAt);
+    assert.ok(result.delivered[0].attemptedAt < result.delivered[0].deliveredAt + 1000);
     const id = result.delivered[0].id;
     assert.ok((readKvFile()['rb-notified-headless'] as Record<string, number>).TEST > 0);
 
@@ -140,7 +152,7 @@ await test('successful first Telegram writes v3 provenance, consumes cooldown, a
     assert.equal(line.v, 3);
     assert.equal(line.id, id);
     assert.equal(line.deliveredAt, line.ts);
-    assert.ok(line.attemptedAt <= line.deliveredAt);
+    assert.ok(line.attemptedAt < line.deliveredAt + 1000);
     assert.equal(line.watchId, `entry:${id}`);
     assert.equal(line.watch.mode, 'shadow');
     assert.equal(line.messageId, 654);

@@ -35,6 +35,7 @@
     "entry-watch": "esbuild scripts/backtest-entry-watch.ts --bundle --format=esm --platform=node --outfile=scripts/.build/backtest-entry-watch.mjs --log-level=warning && node scripts/.build/backtest-entry-watch.mjs",
     "test-entry-watch": "esbuild scripts/test-entry-watch.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-entry-watch.mjs --log-level=warning && node scripts/.build/test-entry-watch.mjs",
     "test-notify-entry": "esbuild scripts/test-notify-entry.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-notify-entry.mjs --log-level=warning && node scripts/.build/test-notify-entry.mjs",
+    "test-chart-png": "esbuild scripts/test-chart-png.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-chart-png.mjs --log-level=warning && node scripts/.build/test-chart-png.mjs",
     "test-push-watch": "esbuild scripts/test-push-watch.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-push-watch.mjs --log-level=warning && node scripts/.build/test-push-watch.mjs",
     "test-signal-events": "esbuild scripts/test-signal-events.ts --bundle --format=esm --platform=node --outfile=scripts/.build/test-signal-events.mjs --log-level=warning && node scripts/.build/test-signal-events.mjs",
     "deep-reclaim": "esbuild scripts/backtest-deep-reclaim.ts --bundle --format=esm --platform=node --outfile=scripts/.build/backtest-deep-reclaim.mjs --log-level=warning && node scripts/.build/backtest-deep-reclaim.mjs",

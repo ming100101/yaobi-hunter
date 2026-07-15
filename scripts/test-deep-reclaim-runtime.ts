@@ -59,7 +59,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const body = init?.body && typeof init.body === 'string' ? JSON.parse(init.body) : {};
     telegramPayloads.push(body);
     return new Response(
-      JSON.stringify({ ok: true, result: { message_id: telegramPayloads.length === 1 ? 111 : 222 } }),
+      JSON.stringify({
+        ok: true,
+        result: { message_id: telegramPayloads.length === 1 ? 111 : 222, date: Math.floor(fakeNow / 1000) },
+      }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     );
   }

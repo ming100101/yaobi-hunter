@@ -28,6 +28,7 @@ $Exe = Join-Path $Repo 'sea\YaobiHunter.exe'
 $RecorderMjs = Join-Path $Repo 'scripts\.build\recorder.mjs'
 $Local = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE 'AppData\Local' }
 $KillFile = Join-Path $Local 'YaobiHunter\KILL'
+$RecorderLock = Join-Path $Local 'YaobiHunter\recorder.lock'
 $Startup = [Environment]::GetFolderPath('Startup')
 $AppVbs = Join-Path $Startup 'YaobiApp.vbs'
 $RecVbs = Join-Path $Startup 'YaobiRecorder.vbs'
@@ -90,6 +91,9 @@ switch ($Action.ToLower()) {
     New-Item -ItemType Directory -Force (Split-Path $KillFile) | Out-Null
     Set-Content -Path $KillFile -Value ("killed " + (Get-Date -Format o)) -Encoding ASCII
     Stop-YaobiProcesses
+    # Stop-Process -Force cannot run the recorder's exit hook. Remove its PID
+    # lock after the process is gone so a reused Windows PID cannot block Resume.
+    Remove-Item -Force $RecorderLock -ErrorAction SilentlyContinue
     Write-Host 'KILLED. All Yaobi background jobs stopped; KILL file set (stays off across reboots until Resume).'
   }
   'resume' {
@@ -97,6 +101,7 @@ switch ($Action.ToLower()) {
     # Resume is idempotent: repeated clicks must not create parallel recorder
     # writers/watchers or duplicate Telegram alerts.
     Stop-YaobiProcesses
+    Remove-Item -Force $RecorderLock -ErrorAction SilentlyContinue
     Start-App
     Start-Recorder
     Write-Host 'RESUMED. KILL file cleared; app + recorder relaunched.'

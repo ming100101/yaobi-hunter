@@ -410,7 +410,16 @@ async function performEarlyDelivery(
   let out = { ok: false, error: 'photo not attempted', messageId: undefined as number | undefined };
   if (candles?.length) {
     try {
-      const png = renderCandlePng(candles, { entry: watch.l0 });
+      const png = renderCandlePng(candles, {
+        symbol: watch.sym,
+        signal: 'DEEP RECLAIM',
+        entry: watch.l0,
+        stop: watch.invalidBelow,
+        lastPrice: watch.lastPx ?? watch.setupClose,
+        change1hPct: watch.ret4hPct,
+        strength: watch.operationalScore ?? watch.rankScore,
+        oi4hPct: watch.setupOi.qty4h,
+      });
       out = await sendTelegramPhoto(cfg.telegramToken, cfg.telegramChatId, png, text);
     } catch {
       /* text fallback below */

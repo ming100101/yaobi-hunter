@@ -53,22 +53,24 @@ const event = (overrides: Partial<SignalNotifyEvent> = {}): SignalNotifyEvent =>
   ...overrides,
 });
 
-test('v1 photo, v2 and v3 delivery rows remain readable; ambiguous v1 text is rejected', () => {
+test('only rows with explicit delivery and Telegram message proof are readable', () => {
   const v1Photo = parseDeliveredSignalObject({ type: 'notify', ts: 1, sym: 'A', cls: 'fb', px: 1, strength: 1, via: 'photo' });
-  const v1Text = parseDeliveredSignalObject({ type: 'notify', ts: 2, sym: 'B', cls: 'fb', px: 1, strength: 1, via: 'text' });
-  const v2 = parseDeliveredSignalObject({ type: 'notify', v: 2, delivered: true, ts: 3, sym: 'C', cls: 'rb', px: 2, strength: 2, via: 'text' });
+  const unproven = parseDeliveredSignalObject({ type: 'notify', delivered: true, ts: 2, sym: 'B', cls: 'fb', px: 1, strength: 1, via: 'text' });
+  const v2 = parseDeliveredSignalObject({ type: 'notify', v: 2, delivered: true, ts: 3, sym: 'C', cls: 'rb', px: 2, strength: 2, via: 'text', messageId: 8 });
   const v3 = parseDeliveredSignalObject({ type: 'notify', v: 3, delivered: true, attemptedAt: 3, ts: 4, deliveredAt: 5, sym: 'D', cls: 'vg', px: 3, strength: 3, via: 'photo', messageId: 9 });
-  assert.equal(v1Photo?.legacy, true);
-  assert.equal(v1Text, null);
+  assert.equal(v1Photo, null);
+  assert.equal(unproven, null);
   assert.equal(v2?.ts, 3);
+  assert.equal(v2?.messageId, 8);
   assert.equal(v3?.ts, 5, 'deliveredAt is the authoritative success timestamp');
   assert.equal(v3?.messageId, 9);
 });
 
-test('shared parser filters symbols, de-duplicates ids, and preserves chronological delivery order', () => {
-  const a = { type: 'notify', v: 3, delivered: true, attemptedAt: 1, ts: 2, deliveredAt: 2, id: 'x', sym: 'THE', cls: 'fb', px: 1, strength: 1, via: 'photo' };
+test('shared parser filters symbols, de-duplicates Telegram messages, and preserves delivery order', () => {
+  const a = { type: 'notify', v: 3, delivered: true, attemptedAt: 1, ts: 2, deliveredAt: 2, id: 'x', sym: 'THE', cls: 'fb', px: 1, strength: 1, via: 'photo', messageId: 10 };
   const b = { ...a, id: 'y', sym: 'OTHER', deliveredAt: 1 };
-  assert.deepEqual(parseDeliveredSignals([JSON.stringify(b), JSON.stringify(a), JSON.stringify(a)].join('\n'), 'THE').map((x) => x.id), ['x']);
+  const duplicate = { ...a, id: 'duplicate-audit-row' };
+  assert.deepEqual(parseDeliveredSignals([JSON.stringify(b), JSON.stringify(a), JSON.stringify(duplicate)].join('\n'), 'THE').map((x) => x.id), ['x']);
 });
 
 test('symbol endpoint returns only notify/watch rows for the requested symbol', () => {

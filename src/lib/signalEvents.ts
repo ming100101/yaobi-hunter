@@ -16,7 +16,7 @@ export interface SignalNotifyEvent {
   px: number; // TG card price, not an execution fill
   strength: number;
   via: NotifyDeliveryVia;
-  messageId?: number;
+  messageId: number;
   legacy: boolean;
 }
 
@@ -27,10 +27,10 @@ export function parseDeliveredSignalObject(value: unknown): SignalNotifyEvent | 
   if (!value || typeof value !== 'object') return null;
   const o = value as Record<string, unknown>;
   if (o.type !== 'notify') return null;
-  // v1 text fallback did not preserve Telegram success, while photo implied a
-  // successful send. v2/v3 carry delivered:true explicitly.
-  const confirmed = o.delivered === true || (o.delivered == null && o.via === 'photo');
-  if (!confirmed || typeof o.sym !== 'string' || typeof o.cls !== 'string') return null;
+  // A chart marker claims that a Telegram message really exists. Only a
+  // positive Telegram message_id is durable delivery proof; legacy photo rows
+  // were sometimes written for an attempt that never reached the user's chat.
+  if (o.delivered !== true || typeof o.sym !== 'string' || typeof o.cls !== 'string') return null;
   if (!CLASSES.has(o.cls as NotifySignalClass) || !CHANNELS.has(o.via as NotifyDeliveryVia)) return null;
   const ts = finite(o.deliveredAt) ?? finite(o.ts);
   const px = finite(o.px);
@@ -42,6 +42,7 @@ export function parseDeliveredSignalObject(value: unknown): SignalNotifyEvent | 
   const v = finite(o.v) ?? 1;
   const attemptedAt = finite(o.attemptedAt) ?? ts;
   const message = finite(o.messageId) ?? finite(o.telegramMessageId);
+  if (message == null || !Number.isInteger(message) || message <= 0) return null;
   return {
     type: 'notify',
     v,
@@ -54,25 +55,26 @@ export function parseDeliveredSignalObject(value: unknown): SignalNotifyEvent | 
     px,
     strength,
     via: o.via as NotifyDeliveryVia,
-    messageId: message != null && Number.isInteger(message) && message > 0 ? message : undefined,
+    messageId: message,
     legacy: v < 3,
   };
 }
 
 export function parseDeliveredSignals(text: string, symbol?: string): SignalNotifyEvent[] {
   const wanted = symbol?.trim().toUpperCase();
-  const byId = new Map<string, SignalNotifyEvent>();
+  const byMessageId = new Map<number, SignalNotifyEvent>();
   for (const line of text.split('\n')) {
     if (!line.includes('"type":"notify"')) continue;
     try {
       const event = parseDeliveredSignalObject(JSON.parse(line));
       if (!event || (wanted && event.sym !== wanted)) continue;
-      byId.set(event.id, event);
+      const prior = byMessageId.get(event.messageId);
+      if (!prior || event.v > prior.v) byMessageId.set(event.messageId, event);
     } catch {
       /* skip malformed line */
     }
   }
-  return [...byId.values()].sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
+  return [...byMessageId.values()].sort((a, b) => a.ts - b.ts || a.messageId - b.messageId);
 }
 
 export type SignalEntryMode = 'tg-card' | 'next-15m';

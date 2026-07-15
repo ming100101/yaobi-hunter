@@ -629,14 +629,18 @@ async function testNotifyAndExit(): Promise<void> {
     signals: { fundsFirst: true, mildRise: true, oiHealthy: true, buyHealthy: true },
   };
   const caption = buildSignalCard(lite, { candles, plan, insights: [] }) + '\n(測試通知,設定成功)';
-  const png = renderCandlePng(candles, { entry: plan.entry });
-  const pngPath = path.join('scripts', '.build', 'test-chart.png');
-  try {
-    fs.writeFileSync(pngPath, png);
-    console.log(`chart png: ${(png.length / 1024).toFixed(1)}KB -> ${pngPath}`);
-  } catch {
-    /* eyeball copy is best-effort */
-  }
+  const png = renderCandlePng(candles, {
+    symbol: lite.symbol,
+    signal: 'TEST SIGNAL',
+    entry: plan.entry,
+    stop: plan.sl,
+    targets: [plan.tp1, plan.tp2, plan.tp3],
+    lastPrice: lite.lastPrice,
+    change1hPct: lite.change1h,
+    strength: lite.strength,
+    volZ: lite.volZ,
+    oi4hPct: lite.oi4h,
+  });
   let tg = await sendTelegramPhoto(cfg.telegramToken, cfg.telegramChatId, png, caption);
   if (!tg.ok) {
     console.log(`photo failed (${tg.error}) — falling back to text`);

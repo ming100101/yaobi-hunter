@@ -27,6 +27,7 @@ const notify = {
   strength: 82,
   via: 'photo',
   delivered: true,
+  messageId: 500,
 };
 const armed = {
   type: 'entry-watch',
@@ -86,11 +87,11 @@ test('terminal records normalize into the invalid UI bucket with their reason', 
   assert.match(parsed.watches[0].reason ?? '', /15m close/);
 });
 
-test('legacy compatibility keeps confirmed photo v1 and rejects ambiguous text v1', () => {
+test('legacy rows without Telegram message proof are rejected for both photo and text', () => {
   const oldPhoto = { type: 'notify', v: 1, ts: T0 - 2, sym: 'SAFE', cls: 'vg', px: 1, strength: 70, via: 'photo' };
   const oldText = { type: 'notify', v: 1, ts: T0 - 1, sym: 'NOPE', cls: 'vg', px: 1, strength: 70, via: 'text' };
   const parsed = parseRecordingEvents([oldPhoto, oldText].map(JSON.stringify).join('\n'));
-  assert.deepEqual(parsed.pushes.map((p) => p.sym), ['SAFE']);
+  assert.deepEqual(parsed.pushes, []);
   assert.deepEqual(parsed.watches, []);
 });
 

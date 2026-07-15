@@ -39,11 +39,21 @@ export interface Channel {
   ok: boolean;
   error?: string;
   messageId?: number;
+  deliveredAt?: number;
 }
 
 export interface TelegramSendOptions {
   replyToMessageId?: number;
   silent?: boolean;
+}
+
+function confirmedTelegramMessage(value: any): Channel {
+  const messageId = Number(value?.result?.message_id);
+  const sentAtSeconds = Number(value?.result?.date);
+  if (!Number.isInteger(messageId) || messageId <= 0 || !Number.isInteger(sentAtSeconds) || sentAtSeconds <= 0) {
+    return { ok: false, error: 'Telegram success response missing message proof' };
+  }
+  return { ok: true, messageId, deliveredAt: sentAtSeconds * 1000 };
 }
 
 export async function sendTelegram(
@@ -68,8 +78,8 @@ export async function sendTelegram(
       }),
     });
     const j: any = await res.json().catch(() => ({}));
-    if (!res.ok || j.ok === false) return { ok: false, error: j.description || `http ${res.status}` };
-    return { ok: true, messageId: Number(j.result?.message_id) || undefined };
+    if (!res.ok || j.ok !== true) return { ok: false, error: j.description || `http ${res.status}` };
+    return confirmedTelegramMessage(j);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -103,8 +113,8 @@ export async function sendTelegramPhoto(
       body: fd,
     });
     const j: any = await res.json().catch(() => ({}));
-    if (!res.ok || j.ok === false) return { ok: false, error: j.description || `http ${res.status}` };
-    return { ok: true, messageId: Number(j.result?.message_id) || undefined };
+    if (!res.ok || j.ok !== true) return { ok: false, error: j.description || `http ${res.status}` };
+    return confirmedTelegramMessage(j);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -160,6 +170,12 @@ export const CLASS_VIRGIN: NotifyClass = {
   title: '🚀 處女增倉',
   tail: SIGNAL_EVIDENCE_COPY.virginBreakout.notify,
   fires: (c) => c.virginBreakout === true,
+};
+
+const CHART_SIGNAL_LABEL: Record<NotifySignalClass, string> = {
+  fb: 'FLUSH BREAKOUT',
+  rb: 'REBUILD BREAKOUT',
+  vg: 'VIRGIN BREAKOUT',
 };
 
 // 老詹-style card caption. All live numbers come from the same CoinLite /
@@ -305,11 +321,25 @@ export async function notifyClassEdges(
       try {
         const caption = buildSignalCard(c, r, klass, followupEnabled);
         try {
-          const png = renderCandlePng(r.candles, { entry: r.plan.entry });
+          const png = renderCandlePng(r.candles, {
+            symbol: c.symbol,
+            signal: CHART_SIGNAL_LABEL[klass.id],
+            entry: r.plan.entry,
+            stop: r.plan.sl,
+            targets: [r.plan.tp1, r.plan.tp2, r.plan.tp3],
+            lastPrice: c.lastPrice,
+            change1hPct: c.change1h,
+            strength: c.strength,
+            volZ: c.volZ,
+            oi4hPct: c.oi4h,
+          });
           const out = await sendTelegramPhoto(cfg.telegramToken, cfg.telegramChatId, png, caption);
           sent = out.ok;
           messageId = out.messageId;
-          if (sent) via = 'photo';
+          if (sent) {
+            via = 'photo';
+            deliveredAt = out.deliveredAt ?? 0;
+          }
         } catch {
           // render threw — caption still carries the full card as text
         }
@@ -317,7 +347,10 @@ export async function notifyClassEdges(
           const out = await sendTelegram(cfg.telegramToken, cfg.telegramChatId, caption);
           sent = out.ok;
           messageId = out.messageId;
-          if (sent) via = 'text';
+          if (sent) {
+            via = 'text';
+            deliveredAt = out.deliveredAt ?? 0;
+          }
         }
       } catch {
         // card build threw — legacy short text below
@@ -331,13 +364,15 @@ export async function notifyClassEdges(
       const out = await sendTelegram(cfg.telegramToken, cfg.telegramChatId, text);
       sent = out.ok;
       messageId = out.messageId;
-      if (sent) via = 'text';
+      if (sent) {
+        via = 'text';
+        deliveredAt = out.deliveredAt ?? 0;
+      }
     }
     if (sent) {
-      deliveredAt = Date.now();
       // Commit the first-stage cooldown immediately after Telegram accepts the
       // message. A toast/render/log failure must never cause a duplicate card.
-      notified[c.symbol] = now;
+      notified[c.symbol] = deliveredAt;
       changed = true;
       writeKvKey(klass.cdKey, notified);
     }
