@@ -1,6 +1,6 @@
-// E3 verification: BTC-regime tag (writer) + regime-filtered eval (reader), plus
-// one live getBtcRegime call. No recorder sweep → no notify side effects.
-// Run: npm run test-regime
+// E3 verification: BTC-regime tag (writer) + regime-filtered eval (reader).
+// Add --live for one optional network check; CI remains deterministic.
+// Run: npm run test-regime [-- --live]
 import { BN_LIVE, getBtcRegime } from '../src/data/binance';
 import { buildSweepMeta } from '../src/lib/recording';
 import { parseRecordings, runEval } from '../src/lib/evalCore';
@@ -36,9 +36,13 @@ ok('runEval no regime → 4 slots', runEval(idx, 10, 'auto').uniqueSlots === 4);
 ok('runEval result carries regime field', runEval(idx, 10, 'auto', 'up').regime === 'up');
 ok('runEval no-regime → regime null', runEval(idx, 10, 'auto').regime === null);
 
-// 3. live getBtcRegime (one klines request)
-const reg = await getBtcRegime(BN_LIVE);
-ok('getBtcRegime live', reg != null && ['up', 'down', 'chop'].includes(reg.regime) && Number.isFinite(reg.ret7d), reg ? `${reg.regime} (ret7d ${reg.ret7d}%)` : 'null');
+// 3. optional live getBtcRegime (one klines request)
+if (process.argv.includes('--live')) {
+  const reg = await getBtcRegime(BN_LIVE);
+  ok('getBtcRegime live', reg != null && ['up', 'down', 'chop'].includes(reg.regime) && Number.isFinite(reg.ret7d), reg ? `${reg.regime} (ret7d ${reg.ret7d}%)` : 'null');
+} else {
+  console.log('SKIP getBtcRegime live (pass --live to enable)');
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS');
 // Let undici close its Windows async handles naturally after the live fetch.
