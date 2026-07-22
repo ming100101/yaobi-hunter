@@ -724,7 +724,7 @@ export default function HistoryView({ tab, onTab, onSelect }: Props) {
   const journal = useMemo(() => (idx ? buildJournal(idx, notifies) : []), [idx, notifies]);
 
   return (
-    <div className="page">
+    <div className="page history-page">
       <div className="topbar">
         <div className="brand">
           <BrandMark />
@@ -771,23 +771,14 @@ export default function HistoryView({ tab, onTab, onSelect }: Props) {
               <div className="hist-section-title">
                 訊號 lift(~{(results.spanHours / 24).toFixed(1)} 日 · {results.uniqueSlots} 格 · {ERA_LABEL[results.source]})
                 {idx && idx.sourcesPresent.length > 1 && (
-                  <span style={{ marginLeft: 8, fontWeight: 400 }}>
+                  <span className="hist-source-switcher">
                     {(['auto', 'binance', 'okx', 'all'] as EvalSource[]).map((s) => (
                       <button
                         key={s}
                         type="button"
                         onClick={() => setEvalSrc(s)}
                         aria-pressed={evalSrc === s}
-                        style={{
-                          marginLeft: 4,
-                          padding: '1px 6px',
-                          fontSize: '0.8em',
-                          cursor: 'pointer',
-                          border: '1px solid var(--border, #888)',
-                          borderRadius: 4,
-                          background: evalSrc === s ? 'var(--accent, #446)' : 'transparent',
-                          color: evalSrc === s ? 'var(--accent-fg, #fff)' : 'inherit',
-                        }}
+                        className={`hist-source-button${evalSrc === s ? ' active' : ''}`}
                       >
                         {SRC_LABEL[s]}
                       </button>
@@ -796,7 +787,7 @@ export default function HistoryView({ tab, onTab, onSelect }: Props) {
                 )}
               </div>
               {results.source === 'all' && idx && idx.sourcesPresent.length > 1 && (
-                <div className="muted" style={{ fontSize: '0.85em', marginBottom: 4 }}>
+                <div className="muted hist-seam-warning">
                   ⚠️ 混合模式跨 OKX→Binance 遷移 seam,lift 溝埋兩個 regime — 只作對照,唔好當統計。
                 </div>
               )}

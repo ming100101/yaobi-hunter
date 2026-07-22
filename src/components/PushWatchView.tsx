@@ -1003,7 +1003,7 @@ export default function PushWatchView({ tab, onTab, coins, source, onSelect }: P
   };
 
   return (
-    <div className="page">
+    <div className="page push-page">
       <div className="topbar">
         <div className="brand">
           <BrandMark />

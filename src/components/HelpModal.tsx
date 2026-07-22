@@ -68,7 +68,7 @@ export default function HelpModal({ onClose }: { onClose: () => void }) {
 
         <section>
           <h3>點用</h3>
-          <p>每 15 分鐘全市場掃描 · 搜尋 tab 查任何幣 · 詳情頁 20 秒自動更新。</p>
+          <p>每 15 分鐘全市場掃描 · 搜尋 tab 查任何幣 · 幣詳情 popup 每 20 秒自動更新。</p>
         </section>
 
         <section className="help-honest">

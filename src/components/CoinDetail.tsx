@@ -75,8 +75,6 @@ export default function CoinDetail({
   source,
   tf,
   onTf,
-  onBack,
-  backLabel = '← 返回掃描列表',
   times,
   pinned,
   onTogglePin,
@@ -90,8 +88,6 @@ export default function CoinDetail({
   times?: SignalTimesEntry;
   tf: Timeframe;
   onTf: (t: Timeframe) => void;
-  onBack: () => void;
-  backLabel?: string;
   pinned: boolean;
   onTogglePin: () => void;
   paper?: PaperState | null;
@@ -140,11 +136,8 @@ export default function CoinDetail({
   const pctFromEntry = (x: number) => fmtPct((x / plan.entry - 1) * 100, 1);
 
   return (
-    <div className="page">
-      <div className="topbar">
-        <button className="btn ghost" onClick={onBack}>
-          {backLabel}
-        </button>
+    <div className="coin-detail">
+      <div className="detail-utility-bar">
         <div className="top-actions">
           <button
             type="button"

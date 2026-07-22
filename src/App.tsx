@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type {
   Coin,
   CoinLite,
@@ -36,6 +36,7 @@ import ScreenerList from './components/ScreenerList';
 import SearchBar from './components/SearchBar';
 import BrandMark from './components/BrandMark';
 import NavTabs, { type AppTab } from './components/NavTabs';
+import CoinDetailModal from './components/CoinDetailModal';
 
 // The scan list is the cold-start surface. Charts and secondary pages are
 // embedded as separate chunks and parsed only when the user opens them.
@@ -66,7 +67,7 @@ const MICRO_BACKOFF_MS = 10 * 60 * 1000; // double the cadence for this long aft
 
 function TabChunkFallback({ tab, onTab }: { tab: AppTab; onTab: (tab: AppTab) => void }) {
   return (
-    <div className="page scan-loading-page" aria-busy="true">
+    <div className="page scan-loading-page app-loading-page" aria-busy="true">
       <div className="topbar">
         <div className="brand">
           <BrandMark />
@@ -85,12 +86,16 @@ function TabChunkFallback({ tab, onTab }: { tab: AppTab; onTab: (tab: AppTab) =>
   );
 }
 
-function DetailChunkFallback() {
+interface DetailRequest {
+  symbol: string;
+  origin: AppTab;
+}
+
+function DetailChunkFallback({ symbol }: { symbol: string }) {
   return (
-    <div className="loading-screen" aria-busy="true">
-      <div className="loading-brand"><BrandMark size={44} /><div className="brand-name">妖幣獵手</div></div>
+    <div className="detail-modal-state" aria-busy="true">
       <div className="spinner" />
-      <div className="muted">正在打開圖表…</div>
+      <div className="muted">正在打開 {symbol} 圖表…</div>
     </div>
   );
 }
@@ -141,6 +146,7 @@ export default function App() {
     });
 
   // open detail view (full-series coin, fetched on demand)
+  const [detailRequest, setDetailRequest] = useState<DetailRequest | null>(null);
   const [detail, setDetail] = useState<{ coin: Coin; at: number; origin: AppTab } | null>(null);
   const [fetching, setFetching] = useState<string | null>(null);
   const [fetchErr, setFetchErr] = useState<string | undefined>();
@@ -420,11 +426,14 @@ export default function App() {
 
   // Open a coin's detail: cached full shows instantly, then a fresh fetch
   // replaces it in the background (2-min cooldown); no cache -> fetch overlay.
-  const openCoin = (symbol: string) => {
-    const origin = tab;
+  const openCoin = (symbol: string, originOverride?: AppTab) => {
+    const origin = originOverride ?? tab;
     const source = scan?.source ?? 'binance';
     markViewed(symbol);
     wantDetail.current = symbol;
+    setDetailRequest({ symbol, origin });
+    setDetail((prev) => (prev?.coin.symbol === symbol ? prev : null));
+    setFetching(symbol);
     setFetchErr(undefined);
 
     void (async () => {
@@ -437,12 +446,14 @@ export default function App() {
       const cachedComplete = cached != null && cached.coin.long != null;
       if (cached) {
         setDetail({ coin: cached.coin, at: cached.at, origin });
-        if (cachedComplete && Date.now() - cached.at < COIN_REFRESH_COOLDOWN_MS) return;
-      } else if (source !== 'demo') {
-        setFetching(symbol);
+        if (cachedComplete && Date.now() - cached.at < COIN_REFRESH_COOLDOWN_MS) {
+          setFetching((current) => (current === symbol ? null : current));
+          return;
+        }
       }
       const now = Date.now();
       if (source !== 'demo' && now - (lastCoinFetch.current[symbol] ?? 0) < COIN_REFRESH_COOLDOWN_MS && cachedComplete) {
+        setFetching((current) => (current === symbol ? null : current));
         return;
       }
       lastCoinFetch.current[symbol] = now;
@@ -454,7 +465,6 @@ export default function App() {
       } catch (e) {
         if (!cached && wantDetail.current === symbol) {
           setFetchErr(`拉取 ${symbol} 失敗：${e instanceof Error ? e.message : String(e)}`);
-          wantDetail.current = null;
         }
       } finally {
         setFetching((f) => (f === symbol ? null : f));
@@ -520,11 +530,13 @@ export default function App() {
     };
   }, []);
 
-  const closeDetail = () => {
+  const closeDetail = useCallback(() => {
     wantDetail.current = null;
+    setDetailRequest(null);
     setDetail(null);
     setFetching(null);
-  };
+    setFetchErr(undefined);
+  }, []);
 
   const switchTab = (t: AppTab) => {
     if (t === 'search') {
@@ -535,50 +547,6 @@ export default function App() {
     closeDetail();
     setFetchErr(undefined);
   };
-
-  if (detail) {
-    return (
-      <Suspense fallback={<DetailChunkFallback />}>
-        <CoinDetail
-          key={detail.coin.symbol}
-          coin={detail.coin}
-          scannedAt={detail.at}
-          source={scan?.source ?? 'binance'}
-          tf={tf}
-          onTf={setTf}
-          onBack={closeDetail}
-          backLabel={
-            detail.origin === 'pushes'
-              ? '← 返回推送監察'
-              : detail.origin === 'history'
-                ? '← 返回記錄'
-                : detail.origin === 'strategy'
-                  ? '← 返回策略'
-                  : '← 返回掃描列表'
-          }
-          times={sigTimes[detail.coin.symbol]}
-          pinned={pinned.has(detail.coin.symbol)}
-          onTogglePin={() => togglePin(detail.coin.symbol)}
-          paper={paper}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-        />
-      </Suspense>
-    );
-  }
-
-  if (fetching && !detail) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-brand">
-          <BrandMark size={44} />
-          <div className="brand-name">妖幣獵手</div>
-        </div>
-        <div className="spinner" />
-        <div className="muted">正在拉取 {fetching} 完整資料…</div>
-      </div>
-    );
-  }
 
   const searchOverlay = searchOpen && scan ? (
     <SearchBar
@@ -597,6 +565,35 @@ export default function App() {
     />
   ) : null;
 
+  const detailOverlay = detailRequest ? (
+    <CoinDetailModal
+      symbol={detailRequest.symbol}
+      busy={fetching === detailRequest.symbol}
+      error={fetchErr}
+      onClose={closeDetail}
+      onRetry={() => openCoin(detailRequest.symbol, detailRequest.origin)}
+    >
+      {detail?.coin.symbol === detailRequest.symbol ? (
+        <Suspense fallback={<DetailChunkFallback symbol={detailRequest.symbol} />}>
+          <CoinDetail
+            key={detail.coin.symbol}
+            coin={detail.coin}
+            scannedAt={detail.at}
+            source={scan?.source ?? 'binance'}
+            tf={tf}
+            onTf={setTf}
+            times={sigTimes[detail.coin.symbol]}
+            pinned={pinned.has(detail.coin.symbol)}
+            onTogglePin={() => togglePin(detail.coin.symbol)}
+            paper={paper}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
+        </Suspense>
+      ) : undefined}
+    </CoinDetailModal>
+  ) : null;
+
   if (tab === 'settings') {
     return (
       <>
@@ -604,6 +601,7 @@ export default function App() {
           <SettingsView tab={tab} onTab={switchTab} />
         </Suspense>
         {searchOverlay}
+        {detailOverlay}
       </>
     );
   }
@@ -615,6 +613,7 @@ export default function App() {
           <StrategyView tab={tab} onTab={switchTab} paper={paper} />
         </Suspense>
         {searchOverlay}
+        {detailOverlay}
       </>
     );
   }
@@ -626,6 +625,7 @@ export default function App() {
           <HistoryView tab={tab} onTab={switchTab} onSelect={openCoin} />
         </Suspense>
         {searchOverlay}
+        {detailOverlay}
       </>
     );
   }
@@ -643,32 +643,36 @@ export default function App() {
           />
         </Suspense>
         {searchOverlay}
+        {detailOverlay}
       </>
     );
   }
 
   if (!scan) {
     return (
-      <div className="page scan-loading-page">
-        <div className="topbar">
-          <div className="brand">
-            <BrandMark />
+      <>
+        <div className="page scan-loading-page app-loading-page">
+          <div className="topbar">
+            <div className="brand">
+              <BrandMark />
+              <div>
+                <div className="brand-name">妖幣獵手</div>
+                <div className="brand-sub">市場掃描準備中 · 推送與設定仍可使用</div>
+              </div>
+            </div>
+            <NavTabs tab={tab} onTab={switchTab} />
+          </div>
+          <div className="card scan-loading-card">
+            <div className="spinner" />
             <div>
-              <div className="brand-name">妖幣獵手</div>
-              <div className="brand-sub">市場掃描準備中 · 推送與設定仍可使用</div>
+              <strong>{progress ? `正在掃描 ${progress.done}/${progress.total}` : '正在載入市場資料'}</strong>
+              <p className="muted">Binance繁忙或限速時，推送監察、策略、記錄同設定頁仍然可以直接打開。</p>
+              {loadErr && <p className="set-err">{loadErr}</p>}
             </div>
           </div>
-          <NavTabs tab={tab} onTab={switchTab} />
         </div>
-        <div className="card scan-loading-card">
-          <div className="spinner" />
-          <div>
-            <strong>{progress ? `正在掃描 ${progress.done}/${progress.total}` : '正在載入市場資料'}</strong>
-            <p className="muted">Binance繁忙或限速時，推送監察、策略、記錄同設定頁仍然可以直接打開。</p>
-            {loadErr && <p className="set-err">{loadErr}</p>}
-          </div>
-        </div>
-      </div>
+        {detailOverlay}
+      </>
     );
   }
 
@@ -700,6 +704,7 @@ export default function App() {
       onToggleTheme={toggleTheme}
     />
     {searchOverlay}
+    {detailOverlay}
     </>
   );
 }

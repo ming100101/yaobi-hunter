@@ -293,7 +293,7 @@ export default function ScreenerList({
   }, []);
 
   return (
-    <div className="page">
+    <div className="page scan-page">
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       <div className="topbar">
         <div className="brand">

@@ -251,7 +251,7 @@ export default function SettingsView({ tab, onTab }: Props) {
   const chatSet = cfg.telegramChatId.trim().length > 0;
 
   return (
-    <div className="page">
+    <div className="page settings-page">
       <div className="topbar">
         <div className="brand">
           <BrandMark />

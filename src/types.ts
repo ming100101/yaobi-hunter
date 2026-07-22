@@ -222,9 +222,9 @@ export interface LongSeries {
 // should test `!== 'demo'` for "is live", not a specific exchange literal.
 export type ScanSource = 'binance' | 'okx' | 'demo';
 
-// F1: visual theme. 'y2k' is the 🎀 pastel pixel skin — pure token overrides in
-// theme.css, persisted under kv 'theme'; charts re-read colors via a
-// theme-keyed remount.
+// Visual theme. 'dark' is the default Liquid Glass web skin; 'y2k' is the 🎀
+// pastel pixel alternative. Both are token-driven in theme.css and persisted
+// under kv 'theme'; charts re-read colors via a theme-keyed remount.
 export type ThemeName = 'dark' | 'y2k';
 
 // Notification config (persisted under kv key 'notify'; edited in the 設定 tab,
