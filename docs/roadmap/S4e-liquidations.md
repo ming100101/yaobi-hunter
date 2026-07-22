@@ -55,3 +55,11 @@ Coinglass 式清算 heatmap 唔係數據,係模型輸出 — 佢哋用 OI+假設
 - **dedupe 實證**:連續兩個真 sweep(slot 1981471/1981472),PYTH 兩邊都有事件而 timestamp 零重疊(MINA 3 / PYTH 1 / EDGE 4 全新)— `lastLiqTs` 機制照設計行。
 - **體積**:每 sweep 一行,cands ~250B + 事件 tuple ~30B/單;粗估安靜日 <100KB/日,爆倉日 ~1MB/日 — 可接受。
 - Phase 2/3 照鎖:等 p1 錄滿 ≥1 個月先開 model,model 完先過驗證 gate。
+
+## 2026-07-21 historical-evidence classification
+
+`source-unavailable` for archive replay: Binance Public Data has no liquidation
+archive matching the required event stream. Klines, metrics or OI must not be
+used to fabricate liquidation events. Only a genuinely captured websocket/API
+stream can build this evidence forward, so phase 2/3 cannot be unlocked by the
+H1 backfill.

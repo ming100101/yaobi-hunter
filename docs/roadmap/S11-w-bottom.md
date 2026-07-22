@@ -46,3 +46,15 @@
 - EMA50(1H) 分支要 ≥52 bar — live scan tier 得 48 支 1H(48h 5m 聚合),所以 scan/recorder tier 只行 `ret24h ≥ +10%` 分支(嚴格子集,申報);detail view(有 coin.long)先行齊兩分支。B2 同款限制,照樣申報。
 - 防接刀前置唔准放寬去遷就任何樣本。
 - W 底喺 15m 圖更精細,但 gate 喺 1H 行(harness 一致性);15m 版本係 E1 之後嘅另一實驗,唔准偷步。
+
+## 2026-07-21 H1 evidence update
+
+W1／W2／W3 六個月重跑全部 `historical-fail`。10%×24h matched lift ×1.09／×1.27／×1.09，net −0.38%／−0.22%／−0.31%，bootstrap 下界全負；W2 唔再標作等待 E1 recordings。任何新 15m 定義仍要另行預註冊，唔可用今次結果事後調參。
+
+## 2026-07-22 remediation v2
+
+舊 W1–W3 規則同失敗結論不變。Jan–Mar discovery 鎖定 `W2 + uncrowded-trend`，Apr–Jun 單次 validation 得 73 events／65 coins／41 days，10%×24h matched lift ×1.69，after-cost/funding +2.23%，3/3 正月份；四個 robustness cells 最低 lift ×1.52。confirmation 只讀完成 1H/as-of data：4h 回報 >0 且 ≤6%、BTC 24h 不跌、quantity OI 4h 介乎 0–10%、funding ≤0.01%。只加入 `wbottom-w2-uncrowded-v2` forward shadow；badge、Telegram、paper 同 tier map 仍關閉。
+
+## 2026-07-22 frozen July holdout
+
+凍結上述 `uncrowded-trend` 規則後，以 2026-07-01..20 daily archive 做獨立 post-selection holdout。結果 22 events／21 coins／12 UTC days，10%×24h matched lift ×0.48、after-cost/funding −3.68%、worst cross-cell lift ×0.48、bootstrap L95 −6.35%，固定 gate 明確失敗，分類為 `holdout-fail`。停止任何升班建議；badge／Telegram／paper／tier map 維持關閉，現有 shadow runtime 不由歷史報告自動改動。

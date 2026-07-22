@@ -1,0 +1,224 @@
+{
+  "boundaries": [
+    "Historical holdout cannot prove recorder uptime, runtime selection, Telegram delivery, paper fills or real slippage.",
+    "No holdout result automatically changes badge, Telegram, paper, entry-watch or tier state.",
+    "A failed or insufficient July result must not be repaired by retuning on July."
+  ],
+  "cacheAsOf": "2026-07-20",
+  "frozenRulesetAt": "2026-07-22",
+  "holdoutId": "historical-evidence-holdout-2026-07-01_2026-07-21-v1",
+  "items": [
+    {
+      "completeCoins": 7,
+      "completeDays": 7,
+      "completeEvents": 7,
+      "filter": "reversal-confirmed",
+      "gates": {
+        "bootstrap": false,
+        "netAfterCost": true,
+        "primaryLift": false,
+        "robustness": false,
+        "sample": false
+      },
+      "recommendation": "樣本未夠；保持 forward shadow，唔作成敗結論。",
+      "result": {
+        "bootstrapLower95": -0.03213859677601892,
+        "capability": "historical-fail",
+        "coins": 7,
+        "coverage": 1,
+        "days": 7,
+        "events": 7,
+        "horizons": [
+          {
+            "baselineRate": 0.4444444444444444,
+            "complete": 7,
+            "events": 7,
+            "hitRate": 0.42857142857142855,
+            "horizonH": 24,
+            "lift": 0.9642857142857143,
+            "meanReturn": 0.027430601242036223,
+            "medianReturn": 0.04400823175558022,
+            "netAfterCost": 0.02526540981346479,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.7777777777777778,
+            "complete": 7,
+            "events": 7,
+            "hitRate": 0.5714285714285714,
+            "horizonH": 48,
+            "lift": 0.7346938775510203,
+            "meanReturn": 0.012542595995843937,
+            "medianReturn": 0.10400506569574175,
+            "netAfterCost": 0.01103329456727251,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.1111111111111111,
+            "complete": 7,
+            "events": 7,
+            "hitRate": 0,
+            "horizonH": 24,
+            "lift": 0,
+            "meanReturn": 0.027430601242036223,
+            "medianReturn": 0.04400823175558022,
+            "netAfterCost": 0.02526540981346479,
+            "targetPct": 15
+          },
+          {
+            "baselineRate": 0.3333333333333333,
+            "complete": 7,
+            "events": 7,
+            "hitRate": 0.14285714285714285,
+            "horizonH": 48,
+            "lift": 0.42857142857142855,
+            "meanReturn": 0.012542595995843937,
+            "medianReturn": 0.10400506569574175,
+            "netAfterCost": 0.01103329456727251,
+            "targetPct": 15
+          }
+        ],
+        "key": "top-t1-reversal-v2--holdout",
+        "label": "top-t1-reversal-v2 July holdout",
+        "monthlyNet": {
+          "2026-07": 0.02526540981346479
+        },
+        "months": 1,
+        "reasons": [
+          "7 events / 7 coins / 7 days / 1 months",
+          "10%×24h matched lift 0.96",
+          "after-cost/funding mean 2.53%",
+          "1/1 positive monthly folds",
+          "pre-registered sample/span floor not met",
+          "one or more fixed historical gates failed"
+        ],
+        "robustness": {
+          "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+          "status": "fail",
+          "worstLift": 0
+        },
+        "topCoinProfitShare": 0.3512664062989094,
+        "topDayProfitShare": 0.3512664062989094,
+        "walkForwardPositive": 1,
+        "walkForwardTotal": 1
+      },
+      "side": "short",
+      "sourceKey": "top-t1",
+      "status": "insufficient-sample",
+      "strategyId": "top-t1-reversal-v2"
+    },
+    {
+      "completeCoins": 21,
+      "completeDays": 12,
+      "completeEvents": 22,
+      "filter": "uncrowded-trend",
+      "gates": {
+        "bootstrap": false,
+        "netAfterCost": false,
+        "primaryLift": false,
+        "robustness": false,
+        "sample": true
+      },
+      "recommendation": "獨立 holdout gate 失敗；停止升班，保留研究紀錄。",
+      "result": {
+        "bootstrapLower95": -0.06350046790206922,
+        "capability": "historical-fail",
+        "coins": 21,
+        "coverage": 1,
+        "days": 12,
+        "events": 22,
+        "horizons": [
+          {
+            "baselineRate": 0.19047619047619047,
+            "complete": 22,
+            "events": 22,
+            "hitRate": 0.09090909090909091,
+            "horizonH": 24,
+            "lift": 0.4772727272727273,
+            "meanReturn": -0.03444480336546617,
+            "medianReturn": -0.024906571375939823,
+            "netAfterCost": -0.03679177745637524,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.2422360248447205,
+            "complete": 21,
+            "events": 22,
+            "hitRate": 0.14285714285714285,
+            "horizonH": 48,
+            "lift": 0.5897435897435896,
+            "meanReturn": -0.023849112875337742,
+            "medianReturn": -0.026976160602258603,
+            "netAfterCost": -0.024150176684861555,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.11904761904761904,
+            "complete": 22,
+            "events": 22,
+            "hitRate": 0.09090909090909091,
+            "horizonH": 24,
+            "lift": 0.7636363636363637,
+            "meanReturn": -0.03444480336546617,
+            "medianReturn": -0.024906571375939823,
+            "netAfterCost": -0.03679177745637524,
+            "targetPct": 15
+          },
+          {
+            "baselineRate": 0.14906832298136646,
+            "complete": 21,
+            "events": 22,
+            "hitRate": 0.14285714285714285,
+            "horizonH": 48,
+            "lift": 0.9583333333333333,
+            "meanReturn": -0.023849112875337742,
+            "medianReturn": -0.026976160602258603,
+            "netAfterCost": -0.024150176684861555,
+            "targetPct": 15
+          }
+        ],
+        "key": "wbottom-w2-uncrowded-v2--holdout",
+        "label": "wbottom-w2-uncrowded-v2 July holdout",
+        "monthlyNet": {
+          "2026-07": -0.03679177745637524
+        },
+        "months": 1,
+        "reasons": [
+          "22 events / 21 coins / 12 days / 1 months",
+          "10%×24h matched lift 0.48",
+          "after-cost/funding mean -3.68%",
+          "0/1 positive monthly folds",
+          "pre-registered sample/span floor not met",
+          "one or more fixed historical gates failed"
+        ],
+        "robustness": {
+          "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+          "status": "fail",
+          "worstLift": 0.4772727272727273
+        },
+        "topCoinProfitShare": 0.5784614142839017,
+        "topDayProfitShare": 0.551738553996255,
+        "walkForwardPositive": 0,
+        "walkForwardTotal": 1
+      },
+      "side": "long",
+      "sourceKey": "wbottom-w2",
+      "status": "holdout-fail",
+      "strategyId": "wbottom-w2-uncrowded-v2"
+    }
+  ],
+  "protocol": [
+    "Rulesets and filters are exactly the 2026-07-22 frozen v2 definitions; July is never used to tune them.",
+    "Futures/metrics use daily Binance archive zips with official checksums; missing days fail closed. July funding daily/monthly archives were unavailable, so a frozen Binance REST snapshot is separately hashed and disclosed.",
+    "Completed bars only, next native 15m open, as-of quantity OI/funding and the same matched-control filter.",
+    "Provisional holdout pass requires ≥10 complete events, ≥10 coins, ≥7 UTC days, 10%×24h lift ≥1.3, positive after-cost/funding mean, worst cross-cell lift >1.15 and day-block bootstrap L95 >0."
+  ],
+  "scoringBoundary": "Only events with complete cached outcomes count; 48h cells naturally stop roughly two days before 2026-07-20.",
+  "sourceFingerprint": "ac64835e17b4644a2cd5552fde8ea24e469e967745dca150387bd5a1f3b008b4",
+  "summary": {
+    "fail": 1,
+    "insufficient": 1,
+    "pass": 0
+  },
+  "v": 1
+}

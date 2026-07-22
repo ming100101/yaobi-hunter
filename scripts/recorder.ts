@@ -22,13 +22,14 @@ import { buildSignalCard, CLASS_REBUILD, CLASS_VIRGIN, notifyClassEdges, notifyF
 import type { NotifyRich } from './notifyHeadless';
 import { renderCandlePng } from './chartPng';
 import { mulberry32, makeRandn } from '../src/lib/prng';
-import { drivePaper, risingFbEdges, createPaperState } from '../src/lib/paper';
+import { applyEvidencePaperDecision, drivePaper, evidenceApprovedPaperEdges, createPaperState } from '../src/lib/paper';
 import type { PaperState } from '../src/lib/paper';
 import {
   activeEntryWatches,
   applyEntryWatchTransition,
   createEntryWatchCandidate,
   deriveEntryWatchAnchor,
+  ENTRY_WATCH_AVAILABLE,
   ENTRY_WATCH_PROMOTED,
   markEntryWatchDelivered,
   markEntryWatchSendFailed,
@@ -37,7 +38,7 @@ import {
   supersedeEntryWatch,
 } from '../src/lib/entryWatch';
 import { readEntryWatchState, writeEntryWatchState } from './entryWatchFile';
-import type { Candle, Coin, CoinLite, DeliveredPush, EntryWatchCandidate, EntryWatchEvent, EntryWatchState, NotifyCfg } from '../src/types';
+import type { Candle, Coin, CoinLite, DeliveredPush, EntryWatchCandidate, EntryWatchEvent, EntryWatchState, NotifyCfg, StrategyCandidate } from '../src/types';
 import {
   collectDeepReclaimPriceCandidate,
   monitorDeepReclaims,
@@ -46,7 +47,7 @@ import {
   type DeepReclaimSweepCandidate,
 } from './deepReclaimRuntime';
 import { HourlyMarketStore } from './hourlyMarketFile';
-import { collectB2ShadowCandidates, collectExistingSignalShadowCandidates, collectSpotShadowCandidates, runStrategyShadowCycle } from './strategyShadowFile';
+import { collectB2ShadowCandidates, collectExistingSignalShadowCandidates, collectRemediatedSignalShadowCandidates, collectSpotShadowCandidates, runStrategyShadowCycle } from './strategyShadowFile';
 
 // Market data comes from Binance (BN_LIVE); OKX remains ONLY for the S4e
 // liquidation poll — Binance has no public REST force-order endpoint.
@@ -130,7 +131,8 @@ const lastLiqTs = new Map<string, number>();
 // back. fbEdges = rising ⚡ edge vs the previous sweep, computed by the caller
 // before prevFb is reassigned.
 function drivePaperFromSweep(coins: CoinLite[], nowMs: number, fbEdges: Set<string>): void {
-  const state = (readKvFile()['paper-state'] as PaperState | undefined) ?? createPaperState();
+  const stored = (readKvFile()['paper-state'] as PaperState | undefined) ?? createPaperState();
+  const state = applyEvidencePaperDecision(stored, nowMs);
   const wall = Date.now();
   if (wall - state.lastDriverTs < PAPER_DRIVER_TTL && state.driver === 'app') return; // app alive
   const marks = new Map(coins.map((c) => [c.symbol, c.lastPrice] as [string, number]));
@@ -158,6 +160,7 @@ function persistEntryWatch(): void {
 }
 
 function armDeliveredEntryWatches(pushes: DeliveredPush[]): void {
+  if (!ENTRY_WATCH_AVAILABLE) return;
   const cfg = (readKvFile()['notify'] ?? {}) as Partial<NotifyCfg>;
   if (cfg.entryWatchEnabled === false) return;
   let changed = false;
@@ -237,7 +240,7 @@ function reconcileAmbiguousEntrySends(): void {
 async function deliverReadyEntryWatches(cfg: Partial<NotifyCfg>): Promise<void> {
   // Absent follows the gate-controlled deployment default. An explicit user
   // off still pauses delivery without rewriting the frozen candidate.
-  if (cfg.entryWatchEnabled === false) return;
+  if (!ENTRY_WATCH_AVAILABLE || cfg.entryWatchEnabled === false) return;
   for (const c0 of activeEntryWatches(entryWatchState)) {
     if (
       c0.status !== 'ready' ||
@@ -285,6 +288,7 @@ async function deliverReadyEntryWatches(cfg: Partial<NotifyCfg>): Promise<void> 
 }
 
 async function monitorEntryWatches(): Promise<void> {
+  if (!ENTRY_WATCH_AVAILABLE) return;
   const cfg = (readKvFile()['notify'] ?? {}) as Partial<NotifyCfg>;
   const watches = activeEntryWatches(entryWatchState).filter((c) => c.status === 'watching');
   if (watches.length) {
@@ -333,6 +337,7 @@ async function sweepAndRecord(): Promise<CoinLite[]> {
   const now = Date.now();
   const coins: CoinLite[] = [];
   const deepReclaimCandidates: DeepReclaimSweepCandidate[] = [];
+  const remediatedShadowCandidates: StrategyCandidate[] = [];
   // Active confirmations are execution-timing work: check them immediately
   // after the native 15m close, before the slower full-market sweep.
   try {
@@ -356,7 +361,7 @@ async function sweepAndRecord(): Promise<CoinLite[]> {
   // toLite strips candles/plan. insights = interpret(c), same objects the detail
   // page shows, so the card can never quote different numbers.
   const rich = new Map<string, NotifyRich>();
-  await runRollingScan(BN_LIVE, now, [], (batch) => {
+  await runRollingScan(BN_LIVE, now, [], (batch, progress) => {
     for (const c of batch) {
       // Recorder-owned, completed 1H evidence store. The rolling scan carries
       // enough 5m bars to append newly completed clock hours without another
@@ -375,6 +380,9 @@ async function sweepAndRecord(): Promise<CoinLite[]> {
       const vg = virginSignals(c);
       if (vg && (vg[0] || vg[1] || vg[2])) sweepVg[c.symbol] = vg;
       const lite = toLite(c);
+      remediatedShadowCandidates.push(
+        ...collectRemediatedSignalShadowCandidates(hourlyMarketStore, lite, tp, wb, progress.btcRet24h, now),
+      );
       const deep = collectDeepReclaimPriceCandidate(c, lite, now);
       if (deep) deepReclaimCandidates.push(deep);
       if (lite.flushBreakout || lite.rebuildBreakout || lite.virginBreakout) {
@@ -421,6 +429,7 @@ async function sweepAndRecord(): Promise<CoinLite[]> {
       ...collectB2ShadowCandidates(hourlyMarketStore, coins, Date.now()),
       ...collectSpotShadowCandidates(coins, now),
       ...collectExistingSignalShadowCandidates(coins, now),
+      ...remediatedShadowCandidates,
     ];
     const result = await runStrategyShadowCycle(shadow, Date.now());
     if (result.armed || result.outcomes) {
@@ -480,7 +489,7 @@ async function sweepAndRecord(): Promise<CoinLite[]> {
   // paper trading (best-effort — never let it break the loop). Compute the rising
   // ⚡ edge against the PREVIOUS sweep's set before notify reassigns prevFb below.
   try {
-    drivePaperFromSweep(coins, now, risingFbEdges(coins, prevFb));
+    drivePaperFromSweep(coins, now, evidenceApprovedPaperEdges(coins, prevFb));
   } catch (e) {
     console.error(`  paper drive failed: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -632,9 +641,7 @@ async function testNotifyAndExit(): Promise<void> {
   const png = renderCandlePng(candles, {
     symbol: lite.symbol,
     signal: 'TEST SIGNAL',
-    entry: plan.entry,
-    stop: plan.sl,
-    targets: [plan.tp1, plan.tp2, plan.tp3],
+    alertPrice: lite.lastPrice,
     lastPrice: lite.lastPrice,
     change1hPct: lite.change1h,
     strength: lite.strength,

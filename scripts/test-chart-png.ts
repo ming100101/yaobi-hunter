@@ -23,9 +23,9 @@ for (let i = 0; i < 576; i++) {
 const png = renderCandlePng(candles, {
   symbol: 'TEST',
   signal: 'FLUSH BREAKOUT',
-  entry: 0.1201,
-  stop: 0.1165,
-  targets: [0.1249, 0.1297, 0.1381],
+  alertPrice: previous,
+  watchLow: 0.1194,
+  watchHigh: 0.1203,
   lastPrice: previous,
   change1hPct: 2.4,
   strength: 82,

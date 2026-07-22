@@ -22,6 +22,7 @@ import { EARLY_PUMP_SHIPPED, IGNITION_SHIPPED } from '../lib/analyze'; // S14 ba
 import { kvGet, kvSet } from '../data/cache';
 import HelpModal from './HelpModal';
 import { SIGNAL_EVIDENCE_COPY } from '../lib/evidenceCopy';
+import { H1_EVIDENCE_DECISION } from '../lib/evidenceDecision';
 
 interface Props {
   scan: ScanResult;
@@ -148,27 +149,27 @@ function Row({
             🔥點火
           </span>
         )}
-        {c.flushBreakout && (
+        {H1_EVIDENCE_DECISION.badges.flushBreakout && c.flushBreakout && (
           <span className="fb-badge" title={SIGNAL_EVIDENCE_COPY.flushBreakout.badge}>
             ⚡{t?.fb ? <span className="sig-age">{fmtAge(t.fb)}</span> : null}
           </span>
         )}
-        {!c.flushBreakout && c.earlyAccum && (
+        {H1_EVIDENCE_DECISION.badges.earlyAccum && !c.flushBreakout && c.earlyAccum && (
           <span className="ea-badge" title={SIGNAL_EVIDENCE_COPY.earlyAccum.badge}>
             蓄{t?.ea ? <span className="sig-age">{fmtAge(t.ea)}</span> : null}
           </span>
         )}
-        {c.spotPump && (
+        {H1_EVIDENCE_DECISION.badges.spotPump && c.spotPump && (
           <span className="sp-badge" title={SIGNAL_EVIDENCE_COPY.spotPump.badge}>
             現
           </span>
         )}
-        {c.virginBreakout && !c.flushBreakout && !c.rebuildBreakout && (
+        {H1_EVIDENCE_DECISION.badges.virginBreakout && c.virginBreakout && !c.flushBreakout && !c.rebuildBreakout && (
           <span className="sp-badge" title={SIGNAL_EVIDENCE_COPY.virginBreakout.badge}>
             擴
           </span>
         )}
-        {c.rebuildBreakout && !c.flushBreakout && (
+        {H1_EVIDENCE_DECISION.badges.rebuildBreakout && c.rebuildBreakout && !c.flushBreakout && (
           <span className="sp-badge" title={SIGNAL_EVIDENCE_COPY.rebuildBreakout.badge}>
             增
           </span>
@@ -181,7 +182,7 @@ function Row({
         {top10Rank != null && t?.top10 ? (
           <span
             className="age-chip"
-            title="現時強度排名(同分以 24h 量、字母序決定)· 時間 = 連續在強度 TOP 10 內幾耐"
+            title="排名參考，唔係入場訊號。現時強度排名(同分以 24h 量、字母序決定)· 時間 = 連續在強度 TOP 10 內幾耐"
           >
             T10 #{top10Rank} · {fmtAge(t.top10)}
           </span>
@@ -249,7 +250,7 @@ export default function ScreenerList({
   // don't jump differently than today's per-batch re-sort).
   const rows = useMemo(() => {
     let list = scan.coins;
-    if (fbOnly) list = list.filter((c) => c.flushBreakout);
+    if (H1_EVIDENCE_DECISION.badges.flushBreakout && fbOnly) list = list.filter((c) => c.flushBreakout);
     if (regimeSet.size) list = list.filter((c) => regimeSet.has(c.regime));
     if (minVol > 0) list = list.filter((c) => c.vol24h >= minVol);
     const dir = sortDir === 'desc' ? -1 : 1;
@@ -322,15 +323,17 @@ export default function ScreenerList({
           >
             🎀
           </button>
-          <button
-            type="button"
-            className={`fb-toggle${fbOnly ? ' on' : ''}`}
-            onClick={onFbToggle}
-            title={SIGNAL_EVIDENCE_COPY.flushBreakout.filter}
-            aria-pressed={fbOnly}
-          >
-            ⚡ 縮倉突破
-          </button>
+          {H1_EVIDENCE_DECISION.badges.flushBreakout && (
+            <button
+              type="button"
+              className={`fb-toggle${fbOnly ? ' on' : ''}`}
+              onClick={onFbToggle}
+              title={SIGNAL_EVIDENCE_COPY.flushBreakout.filter}
+              aria-pressed={fbOnly}
+            >
+              ⚡ 縮倉突破
+            </button>
+          )}
           {(['accumulate', 'pump', 'distribute'] as const).map((rg) => (
             <button
               key={rg}
@@ -356,6 +359,9 @@ export default function ScreenerList({
           </select>
           <SourceChip source={scan.source} />
           <PaperChip paper={paper} />
+          <span className="chip" title="2026 H1 歷史 gate 決定：落敗 detector 只保留 shadow recording；badge、通知同新 paper entry 已關閉。">
+            H1 · 影子模式
+          </span>
           {/* fixed-width slot, reserved even when idle, so the row never reflows */}
           <span className="chip num scan-count" style={progress ? undefined : { visibility: 'hidden' }}>
             掃描 {progress ? `${progress.done}/${progress.total}` : '0/0'}
@@ -408,7 +414,7 @@ export default function ScreenerList({
         ))}
         {rows.length === 0 && (
           <div className="sr-empty muted">
-            {fbOnly
+            {H1_EVIDENCE_DECISION.badges.flushBreakout && fbOnly
               ? SIGNAL_EVIDENCE_COPY.flushBreakout.empty
               : '沒有符合篩選條件的幣。'}
           </div>
@@ -419,7 +425,7 @@ export default function ScreenerList({
         {scan.source !== 'demo'
           ? '資料來源 Binance USDT 永續 · 實時 · 連續掃描（一輪完即接下一輪）· 記錄每 15 分鐘一格'
           : '資料來源 模擬資料（demo）· 連續掃描'}
-        <span className="muted"> · 強度為示範性評分，非投資建議</span>
+        <span className="muted"> · 強度／TOP10 只作排名參考；歷史落敗 detector 只記 shadow，非投資建議</span>
       </div>
     </div>
   );

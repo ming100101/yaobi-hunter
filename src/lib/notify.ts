@@ -2,6 +2,7 @@ import type { CoinLite } from '../types';
 import { kvGet, kvSet } from '../data/cache';
 import { fmtMoney, fmtPct } from './format';
 import { SIGNAL_EVIDENCE_COPY } from './evidenceCopy';
+import { H1_EVIDENCE_DECISION } from './evidenceDecision';
 
 // Desktop toasts for newly-fired ⚡ 縮倉突破 signals. Fires at most once per
 // symbol per cooldown window (persisted in IndexedDB so an app restart doesn't
@@ -30,6 +31,7 @@ export async function notifyNewSignals(
   coins: CoinLite[],
   onOpen: (symbol: string) => void,
 ): Promise<void> {
+  if (!H1_EVIDENCE_DECISION.telegram.fb) return;
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   if (!notified) notified = (await kvGet<Record<string, number>>(STORE_KEY)) ?? {};
   const now = Date.now();

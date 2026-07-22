@@ -98,3 +98,11 @@ E5(強度重校準)嘅前提係「老詹有 alpha 值得校準」。但驗證發
 - OI 對照記住交易所差異(上面 +6.5% vs -6.8% 教訓),cross-exchange 只比方向。
 - 時區:老詹 timestamp 係 HKT 顯示,入庫一律轉 epoch ms(convert 錯一個鐘,join 就廢)。
 - 佢嘅 TP/SL 模擬同 paper.ts 一樣只有 15-min marks — 名義 R 係保守下限,表入面要註明。
+
+## 2026-07-21 historical-evidence classification
+
+`manual-external`: the protected Telegram reference source cannot be recreated
+from Binance archives. Exchange prices can evaluate a manually supplied,
+timestamped reference after the fact, but they cannot prove the original
+message, publication time, deletion/edit history or delivery. E4 therefore
+stays a manual provenance log and is never counted as archive-backfilled.

@@ -8,17 +8,22 @@ import {
 } from '../src/lib/evidenceCopy';
 
 assert.match(EVIDENCE_AUDIT_AS_OF, /^\d{4}-\d{2}-\d{2}$/);
-assert.match(FLUSH_FORWARD_NOTE, /前向未證實 24h 優勢/);
+assert.match(FLUSH_FORWARD_NOTE, /H1 歷史 gate 已失敗/);
+assert.match(FLUSH_FORWARD_NOTE, /badge、通知同新 paper entry 已關閉/);
+assert.match(FLUSH_FORWARD_NOTE, /shadow evidence/);
 assert.match(SIGNAL_EVIDENCE_COPY.flushBreakout.badge, /舊研究窗/);
-assert.match(SIGNAL_EVIDENCE_COPY.flushBreakout.badge, /前向/);
+assert.match(SIGNAL_EVIDENCE_COPY.flushBreakout.badge, /H1 歷史 gate 已失敗/);
+assert.match(SIGNAL_EVIDENCE_COPY.flushBreakout.badge, /shadow/);
 assert.doesNotMatch(SIGNAL_EVIDENCE_COPY.flushBreakout.notify, /命中率\s*\d/);
 assert.doesNotMatch(SIGNAL_EVIDENCE_COPY.rebuildBreakout.notify, /lift\s*[×x]/i);
+assert.match(SIGNAL_EVIDENCE_COPY.rebuildBreakout.notify, /通知已關閉/);
 assert.doesNotMatch(SIGNAL_EVIDENCE_COPY.virginBreakout.notify, /lift\s*[×x]/i);
 
 const formatted = oldStudyEvidence('測試 lift ×1.23');
 assert.match(formatted, /^舊研究窗：/);
 assert.match(formatted, /非現時命中率/);
-assert.match(formatted, /前向重驗中/);
+assert.match(formatted, /H1 歷史 gate 已失敗/);
+assert.match(formatted, /只保留 shadow evidence/);
 
 // Guard the user-facing surfaces which previously copied frozen study numbers
 // as if they were current. Historical figures may live in evidenceCopy and be

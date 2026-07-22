@@ -1348,7 +1348,7 @@ export async function runRollingScan(
 
     done += slice.length;
     emitted += batch.length;
-    if (!onBatch(batch, { done, total })) {
+    if (!onBatch(batch, { done, total, btcRet24h: btcRet24 })) {
       // aborted mid-sweep: let the floating prefetch settle without an
       // unhandled-rejection (its per-item catches make it safe anyway)
       void candlesInFlight.catch(() => {});

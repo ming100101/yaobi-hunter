@@ -11,6 +11,7 @@ import type {
   ExitPlan,
   NotifySignalClass,
 } from '../types';
+import { H1_EVIDENCE_DECISION } from './evidenceDecision';
 
 // Frozen production contract. Keep these values in one shared module so the
 // recorder, replay harness and UI cannot silently implement different watches.
@@ -30,7 +31,7 @@ export const ENTRY_WATCH_MISSED_PCT = 15;
 export const ENTRY_WATCH_PROMOTED = { fb: false, rb: false, vg: false } as const;
 // The App-only shadow monitor is available even when no class has passed the
 // much stricter gate required for a second Telegram notification.
-export const ENTRY_WATCH_AVAILABLE = true;
+export const ENTRY_WATCH_AVAILABLE = H1_EVIDENCE_DECISION.entryWatch;
 
 const ACTIVE_STATUSES = new Set<EntryWatchStatus>(['watching', 'ready', 'sending']);
 const ALL_STATUSES = new Set<EntryWatchStatus>([

@@ -34,7 +34,9 @@ export type StrategyId =
   | 'virgin-v2'
   | 'rebuild-r1'
   | 'flush-breakout'
-  | 'deep-reclaim-v0';
+  | 'deep-reclaim-v0'
+  | 'top-t1-reversal-v2'
+  | 'wbottom-w2-uncrowded-v2';
 
 export type StrategyCandidateStatus = 'shadow' | 'paper' | 'eligible' | 'rejected';
 export type ExecutionPolicyId = 'time24-sl3-v1' | 'ladder-4-8-15-sl3-v1';
@@ -59,6 +61,7 @@ export interface StrategyCandidate {
   signalPx: number;
   status: StrategyCandidateStatus;
   source: 'historical' | 'forward';
+  side?: 'long' | 'short'; // absent on legacy rows means long
   regime?: 'up' | 'down' | 'chop';
   strength?: number;
   ema20?: number;
@@ -89,6 +92,7 @@ export interface StrategyOutcome {
   strategyId: StrategyId;
   executionPolicyId: ExecutionPolicyId;
   sym: string;
+  side?: 'long' | 'short'; // absent on legacy rows means long
   decisionTs: number;
   entryTs: number;
   entryPx: number;
@@ -481,6 +485,7 @@ export interface CoinLite {
 export interface ScanProgress {
   done: number;
   total: number;
+  btcRet24h?: number | null;
 }
 
 // U2 screener sort/filter — state lives in App (survives tab switches), applied

@@ -31,14 +31,14 @@
 | 5 | M1 | 模擬盤 engine(⚡→虛擬倉→P&L) | 3 | M | P0 | [M1](docs/roadmap/M1-paper-trading.md) | ✅ 2026-07-04 |
 | 6 | M3 | 策略對照 tab(每日全跟 ⚡/>70 正反手)+ CLI 歷史 P&L | 3 | M | R1 | [M3](docs/roadmap/M3-strategy-report.md) | ✅ 2026-07-04(07-06 加「+200% 全出(首訊號)」出場模式 toggle,test-strategy 25/25) |
 | 7 | S5 | 跨源聯合解讀(已錄現貨欄位量 lift) | 2 | S | S1 | [S5](docs/roadmap/S5-cross-interpret.md) | ✅ 2026-07-05 |
-| 8 | S2 | 現貨拉盤三 detector(backtest-gated) | 2 | M | S1 | [S2](docs/roadmap/S2-spot-detectors.md) | ✅ 2026-07-05 (2/3;現貨帶動 shipped ×1.79) |
+| 8 | S2 | 現貨拉盤三 detector(backtest-gated) | 2 | M | S1 | [S2](docs/roadmap/S2-spot-detectors.md) | ◐ 2026-07-21:spot pump/accum H1 historical fail，badge OFF；只留真實語義 spot-led forward shadow 候選，proxy 做內部 control |
 | 9 | S3 | Micro-scan(候選幣 75s 複查) | 2 | S | R2 | [S3](docs/roadmap/S3-micro-scan.md) | ✅ 2026-07-05 |
 | 10 | M2 | 記錄/回測 tab(日誌+lift+回放+replay) | 3 | L | R1,M1(M3 已備 endpoint/evalCore) | [M2](docs/roadmap/M2-history-tab.md) | ✅ 2026-07-07(S2 補齊 scrubber/equity curve/replay;replay 特徵級明標 + 不適用計數;preset 128ms;equity 同 chip 一致) |
 | 11 | P1 | OI 凍結根治(冷路徑滯後 + fail-closed) | 1 | M | P0,R1 | [P1](docs/roadmap/P1-oi-freshness.md) | ✅ 2026-07-06(option c:值照顯示標滯後,gate fail-closed) |
 | 12 | R3 | Recording schema v3(補 change1h + f24h) | 1 | S | R1 | [R3](docs/roadmap/R3-recording-change1h.md) | ✅ 2026-07-06 |
 | 13 | E4 | 參考訊號 logbook(老詹對照) | 5 | S/M | R1 | [E4](docs/roadmap/E4-reference-logbook.md) | ✅ 2026-07-06(CLI 版:ref-log/ref-eval + 7 種子;UI form 留 U1;ts 待用戶補實) |
-| 13b | S7 | 上車準備逆向工程(boarding,gated) | 2 | M | E4 | [S7](docs/roadmap/S7-boarding.md) | ✅ 2026-07-06(B2 EMA收復 shipped ×2.04 全 robust≥1.40,detail-only;B1 接刀死、B3 核心線 ×0.74 證老詹文案≠引擎;supersede 07-05 fold 決定) |
-| 14 | S6 | BB squeeze 蓄勢偵測(backtest-gated) | 2 | M | R1,P1 | [S6](docs/roadmap/S6-bb-squeeze.md) | ✅ 2026-07-06(D3 壓縮突破 shipped ×1.42 robust;D2 ×1.73 但 robustness 敗 → recording-only;setup 全部 ≤ baseline 唔出;舊 volatility-squeeze 退役) |
+| 13b | S7 | 上車準備逆向工程(boarding,gated) | 2 | M | E4 | [S7](docs/roadmap/S7-boarding.md) | ✖ 2026-07-21:B2 H1 historical gate failed，detail insight OFF；detector／shadow evidence 保留 |
+| 14 | S6 | BB squeeze 蓄勢偵測(backtest-gated) | 2 | M | R1,P1 | [S6](docs/roadmap/S6-bb-squeeze.md) | ✖ 2026-07-21:D3 H1 historical gate failed，insight OFF；setup／breakout flags 繼續 shadow recording |
 | 15 | S8 | 錨定 VWAP 收復確認(backtest-gated) | 2 | M | — | [S8](docs/roadmap/S8-vwap-reclaim.md) | ✖ 2026-07-07(harness `--mode vwap-reclaim` built + AVWAP exact Σquote/Σbase;A1-A3 三關全敗 → recording-only。A1 ⚡+AVWAP ×0.89 <⚡本身 ×0.99 且 <EMA20 twin(增量 ablation 敗命門);A2/A3 ×1.23/×1.26 未過 ×1.3 且 **meanRet 負**(−0.50/−0.35% vs ⚡ +1.22%)、robustness ±25% 擺 ×1.10-1.84(n=6/14)敗、t15/h48 交叉塌(A3 ×0.84);ARX 覆核唔亮。一窗 37d,harness 留俾 E1 重測;base vol 修正 r[6]→r[5],DATA_VERSION 4→5) |
 | 16 | M4 | 老詹式出場梯對照臂 | 3 | S/M | M1,E4 | [M4](docs/roadmap/M4-exit-ladder.md) | ◐ 2026-07-06(engine+回放 shipped,B 臂時鐘已行;同日加 C 臂 = 老詹 8-10% 全止盈+遠停損變體,test-paper 36/36;UI 對照行待 — 判定日一個月後) |
 | 17 | S4a | 常規 LS ratio 收集 | 2 | S | R1 | [S4a](docs/roadmap/S4a-routine-ls.md) | ✖ superseded 2026-07-07(唔自錄。目標「LS 歷史俾 detector 實驗」已由 Binance Vision metrics dump 達成:`count_long_short_ratio` 5m 月級全宇宙歷史,`backtest5m --metrics` 已接(backtest5m.ts:347-350 註明「S4a/S4b-grade inputs」)、`backtest.ts --ls-drop`(429/1020)亦已可測。自錄 pool 每 sweep 燒最貴嘅 futures/data budget 收嚴格劣化版(15min/top-30/只前向)落一個冇 consumer 嘅 recorded idx16 → 淨值為零,關單。將來若 LS detector 過 gate 要 live-serving,屆時同 detector 一齊加 fetch,唔屬 S4a) |
@@ -46,13 +46,13 @@
 | 19 | S4c | WS 大單監察(pinned 幣) | 2 | M | R2 | [S4c](docs/roadmap/S4c-ws-trades.md) | ✖ 2026-07-08(recording-first 半邊被 Vision aggTrades 取代;**N=11 pump study 實證 whale 唔領先 pump — 9/11 pump 前淨賣、買盤只喺突破同步爆、$50k floor 對妖幣 miscalibrated** → 假說否決,唔起 WS collector。除非全新 hypothesis + coin-relative threshold + state-matched + 領先驗證三關過。第 5 條「偵測更早冇 free lunch」證據) |
 | 20 | S4d | 訊號延遲分析(lead time) | 2 | S | R1+數據 | [S4d](docs/roadmap/S4d-latency-eval.md) | ✅ 2026-07-08(evalCore `leadTime`+per-state lead 分佈,seam-aware;CLI `--lead`+記錄 tab「提早」欄。首量:OKX-era ⚡ lead 無得計(fire 即 move),**strength≥70 中位早 2.0h ×2.57、top10 早 2.5h ×1.98** — 證實太遲投訴 + 指出更早 state 已存在待 E2 升班) |
 | 20b | S4e | 清算事件收集 + DIY 熱區(三期,2/3 gated) | 2 | S→M | R1(p2 需 p1 ≥1月數據) | [S4e](docs/roadmap/S4e-liquidations.md) | ◐ p1 2026-07-06(收集已行:top-25∪⚡ 每 sweep;熱區 model + 驗證 gate 🔒 待數據) |
-| 20c | S9 | 增倉突破(CAP 型 flush→重建→突破,gated) | 2 | M | R1,P1 | [S9](docs/roadmap/S9-rebuild-breakout.md) | ✅ 2026-07-06(R1 shipped ×2.60 全 robustness ≥×1.83,badge「增」+ Telegram;R2/R3 recording-only;申報 meanRet +0.3% 薄)· **07-07 Binance 窗覆核:R1 ×2.34 企穩 ✓;R2 升班試過唔過(×1.33 主 cell 但 t10/h48 ×1.07 敗)維持 recording-only** |
-| 20d | S10 | 派貨/頂部拒絕(SHORT 做空準備,gated) | 2 | M | R1,P1 | [S10](docs/roadmap/S10-distribution-top.md) | ◐ 2026-07-06(全族 n<20(6/3/0/0)→ recording-only;T1 hit 4/6 但 meanRet +2.0% 插完即彈;短卡/S 臂 🔒 等 E1) |
-| 20e | S11 | 雙底接人(W 底 pullback 入場,gated) | 2 | M | R1 | [S11](docs/roadmap/S11-w-bottom.md) | ◐ 2026-07-06(W2 ×1.41 過主 gate 但 t10/h48 ×1.14 敗 cross-target → recording-only,E1 重驗) |
+| 20c | S9 | 增倉突破(CAP 型 flush→重建→突破,gated) | 2 | M | R1,P1 | [S9](docs/roadmap/S9-rebuild-breakout.md) | ✖ 2026-07-21:R1–R3 H1 historical gate failed；「增」badge／Telegram OFF，raw flags／shadow evidence 保留 |
+| 20d | S10 | 派貨/頂部拒絕(SHORT 做空準備,gated) | 2 | M | R1,P1 | [S10](docs/roadmap/S10-distribution-top.md) | ◐ 2026-07-22:舊 T1–T4 仍 retired；新 `T1 + reversal-confirmed` July frozen holdout 只有 7 events／7 coins／7 days，判定 `insufficient-sample`；保持 forward shadow，短卡／paper S 臂仍 OFF |
+| 20e | S11 | 雙底接人(W 底 pullback 入場,gated) | 2 | M | R1 | [S11](docs/roadmap/S11-w-bottom.md) | ✖ 2026-07-22:`W2 + uncrowded-trend` July frozen holdout failed（22 events，10%×24h lift ×0.48，net −3.68%）；停止升班，badge／TG／paper 仍 OFF；shadow 狀態不由歷史審計自動改動 |
 | 20f | S12 | 插針掃損反轉(TRIA 型,gated) | 2 | M | R1 | [S12](docs/roadmap/S12-flushwick.md) | ✖ 2026-07-07(1H ×0.34-0.78 + **5m 重測(Binance Vision)×0.67-0.76** 兩時框兩數據源一致 below baseline → 確認死;副產品 backtest5m.ts 5m harness) |
-| 20g | S13 | 處女增倉突破(EVAA 型零 flush 擴張,gated) | 2 | M | R1,P1 | [S13](docs/roadmap/S13-virgin-expansion.md) | ✅ 2026-07-07(V2 shipped ×2.76 全 robustness ≥×1.85,badge「擴」+ 🚀 Telegram;V1/V3 recording-only;EVAA 零調參 cross-check 09:00 起全亮;meanRet 薄同 S9 家族申報) |
+| 20g | S13 | 處女增倉突破(EVAA 型零 flush 擴張,gated) | 2 | M | R1,P1 | [S13](docs/roadmap/S13-virgin-expansion.md) | ✖ 2026-07-21:V1–V3 H1 historical gate failed；「擴」badge／Telegram OFF，raw flags／shadow evidence 保留 |
 | 20h | S14 | 早期拉盤 initiation(突破前偵測) | 2 | M | R1,S4d | [S14](docs/roadmap/S14-early-pump.md) | ✖ recording-only 2026-07-08(/loop:用戶「太遲」投訴 → 5m harness 新 detector。初測強(×1.73/6.5h lead),live 上咗但 **6-agent 對抗式覆核否決**:×1.73 係 unconditional-baseline 虛高,真增量 ×1.03-1.10、lead 假象(同 move ~1.2h)、expectancy ~0。**定案(state-matched baseline + metrics 版):突破前所有 trigger(量/OI/taker)對 markup geometry 增量 ×0.99-1.04 = 零。偵測更早冇 free lunch — 突破帶量 geometry 係 workhorse,之前 fire 就丟咗佢。** `EARLY_PUMP_SHIPPED=false`,badge/通知 OFF,recording 留參考。lookahead 冇問題,fidelity 逐 bar 對齊。) |
-| 20i | S15 | 深跌收復兩階段早察(深跌→EMA20收復+OI→🟡→L0→🟢) | 2 | L | R1,P1,entryWatch,S7-B2 | [S15](docs/roadmap/S15-deep-reclaim.md) | 🧪 2026-07-13(test-only 兩段 TG 已接通、預設 ON/可 opt-out、Top-1/每日10、quantity-OI + atomic lifecycle;badge/正式升班仍 gate 鎖定;6 參考案例 hypothesis-only) |
+| 20i | S15 | 深跌收復兩階段早察(深跌→EMA20收復+OI→🟡→L0→🟢) | 2 | L | R1,P1,entryWatch,S7-B2 | [S15](docs/roadmap/S15-deep-reclaim.md) | ✖ H1 historical gate failed · 2026-07-21 用戶拍板關自動 test TG；detector、Top-1 selection round、lifecycle、shadow evidence 照錄，badge／paper／tier 維持關閉 |
 | 21 | E3 | BTC regime 標記 | 5 | S | R1 | [E3](docs/roadmap/E3-regime.md) | ✅ 2026-07-08(/loop:`getBtcRegime`(BTC 1H ret7d,±5% up/down 否則 chop,15min cache)→ 兩個 writer 標入 sweep-meta btcRegime/btcRet7d;evalCore `regimeAt`+`runEval(...,regime)` 同時濾 baseline+events;CLI `--regime`。test-regime 全綠,live=up +9.05%。regime tag 由 recorder/app 重啟後起計,pre-E3 slot 自動排除) |
 | 22 | E1 | 月度重驗證 checklist | 5 | S | R1 | [E1](docs/roadmap/E1-revalidation.md) | ☐ 每月行 · 末次 2026-07-07 → [REPORT-2026-07](docs/roadmap/reports/REPORT-2026-07.md)(Binance harness 覆核:增 ×2.63/擴 ×3.09/D3 ×1.30 企穩、B2 ×1.60、現貨帶動 ×1.48、**⚡ ×2.04→×1.28 WATCH**;live recordings 3.6d seam-blended 樣本不足,Binance 年代得 0.6d,下月先有統計力) |
 | 23 | E2 | 訊號升降班制度 | 5 | S | E1×2月 | [E2](docs/roadmap/E2-promote-demote.md) | ☐ |
@@ -66,6 +66,34 @@
 | — | R4 | Telegram 訊號卡升級(詳細內容 + K 線 PNG) | 1 | M | R2 | [R4](docs/roadmap/R4-telegram-rich.md) | ✅ 2026-07-06(photo card + 零依賴 PNG 6.1KB;photo-fail→文字 fallback 實測;觸發範圍不變) |
 | — | U4 | 幣名旁 24h 走勢縮圖 | 支 | S | — | [U4](docs/roadmap/U4-sparkline.md) | ✅ 2026-07-04 |
 | — | F1 | 🎀 Y2K girly pixel 主題 | 支 | M | P0 | [F1](docs/roadmap/F1-y2k-theme.md) | ✅ 2026-07-07(Fusion Pixel zh_hant 703KB 自托管;charts theme-key remount;kv 'theme' 過 port drift;dark 零改動) |
+
+## 2026-07-21 — 2026 H1 historical evidence audit
+
+[完整 zh-HK 報告](HISTORICAL-EVIDENCE-AUDIT-2026-H1.md) · [deterministic JSON](HISTORICAL-EVIDENCE-AUDIT-2026-H1.json) · [方法及產品邊界](docs/roadmap/HISTORICAL-EVIDENCE-AUDIT.md)
+
+- 2026-01..06 archive universe 共 **4,039 coin-months / 759 normalized bases**；逐月 universe，而非今日仍上市名單。大檔留喺已 ignore 嘅 `scripts/backtest-data/`。
+- 32 個可歷史重跑項目：**2 `historical-pass`、30 `historical-fail`**。兩個候選係 Organic spot proxy 同 True spot-led（同一組 27 events / 16 coins；10%×24h matched lift ×1.65、after-cost/funding +0.77%）；只列候選覆核，**不自動升 live**。
+- 30 個 fail（包括 ⚡／蓄、D3、B2、R1–R3、V1–V3、S10、S11、S14、spot pump/accum、UMM、S15、entry-watch、strength≥70、top10）由本日起寫作 **「H1 historical gate failed」**，唔再用「收集中／等 archive」作阻塞理由。舊單窗結論保留作歷史紀錄，但 evidence 狀態由本報告 supersede。
+- 其餘分類：6 `forward-only`、1 `forward-confirmation-required`、1 `source-unavailable`、1 `manual-external`、1 `superseded`。Telegram 送達、runtime Top-1/cooldown、recorder uptime、paper account、真實 slippage 同 T1 一個月正 paper P&L 仍不可由 replay 代替。
+- 審計生成嗰刻只更新 evidence 分類；其後用戶已拍板並執行 [H1 evidence product decision](docs/roadmap/H1-EVIDENCE-DECISION-2026-07-21.md)：落敗 detector 嘅 badge／自動 Telegram／entry-watch／新 paper entry／S15 test feed 已關，raw detector、recording、shadow evidence 同舊 ledger 保留。Strength／Top10 只作排名；tier map 同 T1 仍冇解鎖。
+
+## 2026-07-22 — H1 failed-detector remediation
+
+[完整 remediation 報告](HISTORICAL-EVIDENCE-REMEDIATION-2026-H1.md) · [deterministic JSON](HISTORICAL-EVIDENCE-REMEDIATION-2026-H1.json)
+
+- 30 個 fail 中 7 個屬角色錯配：2 ranking、2 control、3 setup；已明確禁止當獨立 entry，保留各自排序／veto／confirmation 用途。
+- 23 個真正 entry families 用 2026-01 至 03 discovery、2026-04 至 06 單次 validation；五個 broad causal filters 預先固定，matched control 同樣套 filter。
+- 21 個 discovery 已淘汰；兩個鎖定 v2 通過 validation：`top-t1-reversal-v2`（short，48 events，10%×24h lift ×1.63，net +2.90%，2/3 正月份）同 `wbottom-w2-uncrowded-v2`（long，73 events，lift ×1.69，net +2.23%，3/3 正月份）。
+- 兩個 v2 只加入 forward Strategy Lab shadow；原 T1/W2 結論不覆寫，badge、Telegram、paper 同 tier map 全部維持關閉。
+
+## 2026-07-22 — July post-selection frozen holdout
+
+[完整 holdout 報告](HISTORICAL-EVIDENCE-HOLDOUT-2026-07-21.md) · [deterministic JSON](HISTORICAL-EVIDENCE-HOLDOUT-2026-07-21.json)
+
+- 凍結 H1 remediation 規則後，另用 2026-07-01 起嘅 daily archive；官方 price／metrics archive 實際只齊至 **2026-07-20**，所以 manifest 同 scoring boundary 都以 07-20 為準，冇用缺失嘅 07-21 扮完整數據。
+- `top-t1-reversal-v2`：7 events／7 coins／7 days，10%×24h matched lift ×0.96，net +2.53%，但未達 10 events／10 coins floor，判定 `insufficient-sample`，保持 forward shadow，唔作成敗結論。
+- `wbottom-w2-uncrowded-v2`：22 events／21 coins／12 days，10%×24h matched lift ×0.48，net −3.68%，worst lift ×0.48，bootstrap L95 −6.35%，判定 `holdout-fail`，停止升班。
+- Holdout 總結：**0 pass／1 fail／1 insufficient**。July 不會用嚟調參；badge、Telegram、paper、entry-watch、tier map 同現有 shadow runtime 均冇由報告自動改動。
 
 **2026-07-07 數據源遷移(OKX → Binance)**:fapi 對用戶恢復可達,全 market-data 層由 `src/data/okx.ts` 遷去 `src/data/binance.ts`(universe 直接用 exchangeInfo,528 隻 vs 舊 OKX∩BN 355;1000×/1M× 符號價格已歸一化返每幣單位)。舊 spec 入面 okx.ts 嘅 file:line 引用已過時 — 執行舊 spec 前先對返 binance.ts。清算收集(S4e)係唯一留喺 OKX 嘅 endpoint(Binance 冇 REST 清算,要等 S4c 類 WS 收集器)。**統計 seam**:recordings 由呢日起 `source:'binance'`;OI warm store 唔會跨源拼接;所有已 ship lift(⚡×2.04、增×2.60、現貨帶動×1.79、B2×2.04、D3×1.42)全部係 OKX 年代數字,E1 要用 Binance 年代 recordings 重驗先算數。backtest harness 已遷 Binance(DATA_VERSION 4),futures/data 統計只有 30 日深度。**同日補:EPIC seam-miss 修正** — EPIC +33% 冇出通知,複盤證實(1)舊 universe 根本冇 EPIC(0/215 OKX sweeps),(2)seam 期 OI fail-closed 空窗食正 10:00 breakout(增 R1 條件其實齊)。修正 = warm store cold-start seed(`seedFromHist`:用冷路徑本身已 fetch 嘅 openInterestHist,scale 錨定 snapshot level,一個自洽單位,唔拼接;probe 兩推導差 median 0.32%/max 2.08%,hist tail lag ≤6.7min)。P1 fail-closed 政策不變,detector 門檻不變(唔使 gate,P1 類數據層修正);實測 fresh process 首 sweep 40/40 trusted oi4h。新上市幣由第一個 sweep 起 增/⚡ gate 即生效。**同日決定(Claude 代拍板,用戶授權):增/擴 暫唔入模擬盤 book** — (1) A/B/C ⚡-only 係 T1 時鐘可比性基礎;(2) 兩者 Binance 窗 meanRet@24h ≈ +0.01%,lift 做排序得、做自動進場策略未證實;(3) 證據流(sweep-meta flags)照儲,E1 重驗後復議。
 

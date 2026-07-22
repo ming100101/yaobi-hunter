@@ -28,6 +28,7 @@ import {
   type DeepReclaimWatch,
 } from '../src/lib/deepReclaim';
 import { DEEP_RECLAIM_GATE_PROTOCOL } from '../src/lib/researchGate';
+import { H1_EVIDENCE_DECISION } from '../src/lib/evidenceDecision';
 import { fmtPrice } from '../src/lib/format';
 import { renderCandlePng } from './chartPng';
 import {
@@ -68,6 +69,10 @@ interface DeepQuota {
 }
 
 let state: DeepReclaimRuntimeState = readDeepReclaimState();
+
+function deepReclaimFeedEnabled(cfg: Partial<NotifyCfg>): boolean {
+  return H1_EVIDENCE_DECISION.telegram.deepReclaimTestFeed && cfg.deepReclaimTestEnabled === true;
+}
 let lastEarlyAttemptSlot = -1;
 
 function hktDay(ts: number): string {
@@ -264,7 +269,7 @@ function earlySelectionReason(
   now: number,
   slotAlreadyUsed: boolean,
 ): EarlySelectionReason | null {
-  if (cfg.deepReclaimTestEnabled === false) return 'notifications-disabled';
+  if (!deepReclaimFeedEnabled(cfg)) return 'notifications-disabled';
   if (!cfg.telegramToken || !cfg.telegramChatId) return 'telegram-unconfigured';
   if (slotAlreadyUsed) return 'slot-already-used';
   if (now >= watch.expiresAt || now - watch.setupTs > MAX_SIGNAL_AGE_MS) return 'signal-too-old';
@@ -394,7 +399,7 @@ async function performEarlyDelivery(
   const delivery = state.deliveries[watchId];
   const watch = Object.values(state.active).find((c) => c.id === watchId);
   if (!delivery || !watch || !['shadow', 'retry'].includes(delivery.earlyStatus)) return false;
-  if (!cfg.telegramToken || !cfg.telegramChatId || cfg.deepReclaimTestEnabled === false) return false;
+  if (!cfg.telegramToken || !cfg.telegramChatId || !deepReclaimFeedEnabled(cfg)) return false;
   if (!canDeliverEarly(watch.sym)) return false;
   const now = Date.now();
   if (now >= watch.expiresAt || now - watch.setupTs > MAX_SIGNAL_AGE_MS) return false;
@@ -413,8 +418,9 @@ async function performEarlyDelivery(
       const png = renderCandlePng(candles, {
         symbol: watch.sym,
         signal: 'DEEP RECLAIM',
-        entry: watch.l0,
-        stop: watch.invalidBelow,
+        alertPrice: watch.lastPx ?? watch.setupClose,
+        triggerPrice: watch.l0,
+        invalidBelow: watch.invalidBelow,
         lastPrice: watch.lastPx ?? watch.setupClose,
         change1hPct: watch.ret4hPct,
         strength: watch.operationalScore ?? watch.rankScore,
@@ -462,6 +468,7 @@ async function performConfirmDelivery(watchId: string, cfg: Partial<NotifyCfg>):
   const delivery = state.deliveries[watchId];
   const c = delivery?.confirmCandidate;
   if (!delivery || !c || !['sending', 'retry'].includes(delivery.confirmStatus)) return;
+  if (!deepReclaimFeedEnabled(cfg)) return;
   if (!cfg.telegramToken || !cfg.telegramChatId || !delivery.telegramMessageId) {
     delivery.confirmStatus = 'failed';
     appendAudit(deliveryEvent(c, 'confirmation-delivery-failed', 'confirmed', Date.now(), 'missing Telegram reply target'));
@@ -503,6 +510,7 @@ async function performConfirmDelivery(watchId: string, cfg: Partial<NotifyCfg>):
 }
 
 async function deliverDueRetries(cfg: Partial<NotifyCfg>): Promise<void> {
+  if (!deepReclaimFeedEnabled(cfg)) return;
   const now = Date.now();
   for (const d of Object.values(state.deliveries)) {
     if (d.confirmStatus === 'retry' && (d.confirmNextAttemptAt ?? Infinity) <= now) {
@@ -640,7 +648,12 @@ export async function monitorDeepReclaims(): Promise<void> {
 
         if (current.status !== 'watching') {
           const delivery = state.deliveries[current.id];
-          if (current.status === 'confirmed' && delivery?.earlyStatus === 'delivered' && delivery.telegramMessageId) {
+          if (
+            deepReclaimFeedEnabled(cfg) &&
+            current.status === 'confirmed' &&
+            delivery?.earlyStatus === 'delivered' &&
+            delivery.telegramMessageId
+          ) {
             delivery.confirmStatus = 'sending';
             delivery.confirmCandidate = current;
             persist(); // durable confirmation queue before send

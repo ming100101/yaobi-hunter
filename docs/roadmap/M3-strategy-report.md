@@ -148,3 +148,9 @@ Not exercised: live midnight roll-over (Verification 5) — the 60s date-change 
 - SL 照舊幣價 ∓5% 爆倉式清零(20x 之下呢個唔係選擇,係物理);未觸發嘅倉日終平。
 
 UI:策略 tab 頂加 toggle(階梯出場 TP1/TP2 | +200% 全出(首訊號)),兩個 mode 同一次 parse 各起一份報表即時切換,方法行文字跟 mode 換。驗證:typecheck 乾淨;`test-strategy` **25/25 PASS**(新 fixture G:+2.00 單一全出、無 TP1 partial、fill kind、−1.00 爆倉、SL 後不重入);preview 實測 toggle 兩邊數字真係唔同(07-06 當日 >70 n:ladder 77/80 vs allout 75 — 首訊號 dedupe 生效)。
+
+## 2026-07-21 H1 evidence boundary
+
+Strength≥70 crossing 同全市場 Top10 archive replay 分別有 20,940／14,237 events，matched lift ×2.04／×2.41，但 after-cost/funding net −0.27%／−0.26%、兩者都只得 1/6 positive folds，故分類 `historical-fail`。呢個結果唔會改寫 Strategy Lab 已實際產生嘅 paper ledger；歷史 strategy replay 唔可以代替 T1 要求嘅一個月 forward paper P&L。
+
+用戶其後拍板：Strength／Top10 只作 screener 排名參考，不可觸發新 paper entry；舊 ledger 同已開 paper position 照常保留／平倉。

@@ -2,6 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { CoinLite, ExecutionPolicyId, StrategyCandidate } from '../src/types';
 import {
+  passesEvidenceRemediationFilter,
+  type EvidenceRemediationFeatures,
+} from '../src/lib/evidenceRemediation';
+import {
   boardingB2QuantityOiQualified,
   evaluateBoardingB2,
   evaluateEma20ReclaimControl,
@@ -190,6 +194,93 @@ export function collectExistingSignalShadowCandidates(coins: CoinLite[], decisio
         basisPct: coin.feat?.basisPct ?? null,
       });
     }
+  }
+  return out;
+}
+
+function remediationFeatures(
+  series: { candles: Array<{ time: number; open: number; high: number; low: number; close: number }>; volume: Array<{ value: number; takerBuy?: number }> },
+  coin: CoinLite,
+  btcRet24hPct: number | null | undefined,
+): EvidenceRemediationFeatures | null {
+  const rows = series.candles;
+  const volumes = series.volume;
+  if (rows.length < 25 || volumes.length !== rows.length) return null;
+  const i = rows.length - 1;
+  const current = rows[i];
+  const currentVolume = volumes[i];
+  const prior24 = volumes.slice(i - 24, i);
+  const range = rows.slice(i - 23, i + 1);
+  const avgVolume = prior24.reduce((sum, row) => sum + row.value, 0) / prior24.length;
+  const high = Math.max(...range.map((row) => row.high));
+  const low = Math.min(...range.map((row) => row.low));
+  const oiQty4h = coin.oiQty4h;
+  return {
+    assetRet1h: current.close / rows[i - 1].close - 1,
+    assetRet4h: current.close / rows[i - 4].close - 1,
+    assetRet24h: current.close / rows[i - 24].close - 1,
+    btcRet24h: btcRet24hPct == null || !Number.isFinite(btcRet24hPct) ? null : btcRet24hPct / 100,
+    oi4h: oiQty4h == null || !Number.isFinite(oiQty4h) ? null : oiQty4h / 100,
+    fundingRate: Number.isFinite(coin.funding) ? coin.funding / 100 : null,
+    takerBuy1h: currentVolume.takerBuy == null || !(currentVolume.value > 0) ? null : currentVolume.takerBuy / currentVolume.value,
+    volumeRatio24h: avgVolume > 0 ? currentVolume.value / avgVolume : null,
+    rangePos24h: high > low ? (current.close - low) / (high - low) : null,
+    strength: Number.isFinite(coin.strength) ? coin.strength : null,
+  };
+}
+
+// Post-H1 remediation candidates are intentionally shadow-only. Source flags
+// remain frozen; these functions add one causal confirmation layer on the most
+// recent fully completed UTC hour. The 15-minute freshness guard prevents a
+// restart from backfilling candidates or attributing a partial-hour signal to
+// the previous decision bar.
+export function collectRemediatedSignalShadowCandidates(
+  store: HourlyMarketStore,
+  coin: CoinLite,
+  top: [0 | 1, 0 | 1, 0 | 1, 0 | 1] | null,
+  wbottom: [0 | 1, 0 | 1, 0 | 1] | null,
+  btcRet24hPct: number | null | undefined,
+  nowMs: number,
+): StrategyCandidate[] {
+  const series = store.get(coin.symbol);
+  const last = series?.candles.at(-1);
+  if (!series || !last) return [];
+  const decisionTs = (last.time + 3600) * 1000;
+  if (decisionTs > nowMs || nowMs - decisionTs > 15 * 60_000) return [];
+  const features = remediationFeatures(series, coin, btcRet24hPct);
+  if (!features) return [];
+  const base = {
+    type: 'strategy-candidate' as const,
+    v: 1 as const,
+    sym: coin.symbol.toUpperCase(),
+    decisionTs,
+    signalPx: last.close,
+    status: 'shadow' as const,
+    source: 'forward' as const,
+    strength: coin.strength,
+    oiQty1h: coin.oiQty1h ?? null,
+    oiQty4h: coin.oiQty4h ?? null,
+    takerBuyShare4h: coin.feat?.takerBuyShare4h ?? null,
+    perpVol24h: coin.vol24h,
+  };
+  const out: StrategyCandidate[] = [];
+  if (top?.[0] && passesEvidenceRemediationFilter('short', features, 'reversal-confirmed')) {
+    const strategyId = 'top-t1-reversal-v2' as const;
+    out.push({
+      ...base, strategyId, side: 'short',
+      rulesetId: 'top-t1-reversal-v2@2026-07-22',
+      id: idFor(strategyId, coin.symbol, decisionTs),
+      reason: 'H1 remediation: T1 + reversal-confirmed; shadow only',
+    });
+  }
+  if (wbottom?.[1] && passesEvidenceRemediationFilter('long', features, 'uncrowded-trend')) {
+    const strategyId = 'wbottom-w2-uncrowded-v2' as const;
+    out.push({
+      ...base, strategyId, side: 'long',
+      rulesetId: 'wbottom-w2-uncrowded-v2@2026-07-22',
+      id: idFor(strategyId, coin.symbol, decisionTs),
+      reason: 'H1 remediation: W2 + uncrowded-trend; shadow only',
+    });
   }
   return out;
 }

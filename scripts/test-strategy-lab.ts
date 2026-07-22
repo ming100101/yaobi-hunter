@@ -72,6 +72,44 @@ const charged = evaluateStrategyCandidate(candidate, bars(96), EXECUTION_POLICIE
 ]);
 assert.ok(Math.abs(charged.fundingReturn - 0.0001) < 1e-12);
 
+const shortCandidate: StrategyCandidate = {
+  ...candidate,
+  id: 'top-t1-reversal-v2:TEST:1',
+  strategyId: 'top-t1-reversal-v2',
+  rulesetId: 'top-t1-reversal-v2@2026-07-22',
+  side: 'short',
+};
+const shortTime = evaluateStrategyCandidate(
+  shortCandidate,
+  bars(96, (b) => { b.close = 99.5; }),
+  EXECUTION_POLICIES['time24-sl3-v1'],
+  [{ ts: start + 8 * 3600_000, rate: 0.0001 }],
+);
+assert.equal(shortTime.side, 'short');
+assert.ok(Math.abs(shortTime.grossReturn - 0.005) < 1e-12, 'short return is direction-normalized');
+assert.ok(Math.abs(shortTime.fundingReturn + 0.0001) < 1e-12, 'positive funding is a short credit');
+
+const shortTie = evaluateStrategyCandidate(
+  shortCandidate,
+  bars(96, (b, i) => { if (i === 2) { b.high = 104; b.low = 90; } }),
+  EXECUTION_POLICIES['time24-sl3-v1'],
+);
+assert.equal(shortTie.terminal, 'stop');
+assert.ok(Math.abs(shortTie.grossReturn + 0.03) < 1e-12);
+assert.equal(shortTie.ordering.plus4BeforeMinus3, false, 'short same-candle ambiguity is also stop-first');
+
+const shortLadder = evaluateStrategyCandidate(
+  shortCandidate,
+  bars(192, (b, i) => {
+    if (i === 2) b.low = 95.9;
+    if (i === 4) b.low = 91.9;
+    if (i === 6) b.low = 84.9;
+  }),
+  EXECUTION_POLICIES['ladder-4-8-15-sl3-v1'],
+);
+assert.equal(shortLadder.terminal, 'ladder-complete');
+assert.ok(Math.abs(shortLadder.grossReturn - 0.074) < 1e-12, 'short ladder mirrors long economics');
+
 const summary = summarizeStrategyOutcomes([time, tie, ladder]);
 assert.equal(summary.trades, 3);
 assert.equal(summary.coins, 1);

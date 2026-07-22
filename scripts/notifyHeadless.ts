@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { readKvFile, writeKvKey } from './kvFile';
 import { appendRecordLine } from './recordFile';
-import { renderCandlePng } from './chartPng';
+import { renderCandlePng, type ChartOpts } from './chartPng';
 import { fmtPct, fmtPrice } from '../src/lib/format';
 import type {
   Candle,
@@ -16,6 +16,7 @@ import type {
 import type { Insight } from '../src/lib/interpret';
 import { ENTRY_WATCH_PROMOTED, entryWatchId } from '../src/lib/entryWatch';
 import { SIGNAL_EVIDENCE_COPY } from '../src/lib/evidenceCopy';
+import { H1_EVIDENCE_DECISION } from '../src/lib/evidenceDecision';
 
 // Notification I/O for the headless recorder AND the dev/exe server's setup
 // endpoints. Everything runs in Node (Telegram fetch + Windows toast via
@@ -120,14 +121,6 @@ export async function sendTelegramPhoto(
   }
 }
 
-// zh labels mirrored from the UI (CoinDetail ENTRY_KIND_LABEL / RegimeTag
-// REGIME_META) — not imported: those live in .tsx and would drag React into
-// the recorder bundle. Keep in sync if the UI wording ever changes.
-const ENTRY_KIND_LABEL: Record<ExitPlan['kind'], string> = {
-  breakout: '突破位',
-  pullback: '回調位',
-  reclaim: '收復位',
-};
 const REGIME_LABEL: Record<CoinLite['regime'], string> = {
   accumulate: '蓄力',
   pump: '拉升',
@@ -145,6 +138,7 @@ const CARD_EXTRA_IDS = new Set(['squeeze-breakout', 'boarding-reclaim', 'spot-le
 // (gate-passed 2026-07-06, user decision: gate-passers notify).
 export interface NotifyClass {
   id: NotifySignalClass;
+  enabled: boolean; // H1 evidence decision; raw detector still records when false
   cdKey: string; // kv cooldown map key
   title: string; // card/toast header, e.g. '⚡ 縮倉突破'
   tail: string; // the closing lift/caveat line
@@ -152,6 +146,7 @@ export interface NotifyClass {
 }
 export const CLASS_FB: NotifyClass = {
   id: 'fb',
+  enabled: H1_EVIDENCE_DECISION.telegram.fb,
   cdKey: 'fb-notified-headless',
   title: '⚡ 縮倉突破',
   tail: SIGNAL_EVIDENCE_COPY.flushBreakout.notify,
@@ -159,6 +154,7 @@ export const CLASS_FB: NotifyClass = {
 };
 export const CLASS_REBUILD: NotifyClass = {
   id: 'rb',
+  enabled: H1_EVIDENCE_DECISION.telegram.rb,
   cdKey: 'rb-notified-headless',
   title: '📈 增倉突破',
   tail: SIGNAL_EVIDENCE_COPY.rebuildBreakout.notify,
@@ -166,6 +162,7 @@ export const CLASS_REBUILD: NotifyClass = {
 };
 export const CLASS_VIRGIN: NotifyClass = {
   id: 'vg',
+  enabled: H1_EVIDENCE_DECISION.telegram.vg,
   cdKey: 'vg-notified-headless',
   title: '🚀 處女增倉',
   tail: SIGNAL_EVIDENCE_COPY.virginBreakout.notify,
@@ -178,36 +175,63 @@ const CHART_SIGNAL_LABEL: Record<NotifySignalClass, string> = {
   vg: 'VIRGIN BREAKOUT',
 };
 
+/**
+ * Causal first-stage chart contract.
+ *
+ * The Telegram card is a detection alert, not an execution fill. The old path
+ * passed `rich.plan.entry`, which can be an EMA pullback or prior structure
+ * level that price visited before the alert. Labelling that historical level
+ * ENTRY implied an impossible time-travel fill. Only the scan price is marked
+ * at the newest candle; any structure band is explicitly a future watch zone.
+ */
+export function buildSignalChartOptions(c: CoinLite, rich: NotifyRich, klass: NotifyClass): ChartOpts {
+  const ew = rich.entryWatch;
+  return {
+    symbol: c.symbol,
+    signal: CHART_SIGNAL_LABEL[klass.id],
+    alertPrice: c.lastPrice,
+    watchLow: ew ? ew.support - 0.5 * ew.atr : undefined,
+    watchHigh: ew ? ew.support + 0.5 * ew.atr : undefined,
+    lastPrice: c.lastPrice,
+    change1hPct: c.change1h,
+    strength: c.strength,
+    volZ: c.volZ,
+    oi4hPct: c.oi4h,
+  };
+}
+
 // 老詹-style card caption. All live numbers come from the same CoinLite /
-// ExitPlan / Insight objects the app renders — nothing is recomputed here.
+// Insight objects the app renders — nothing is recomputed here. `plan` remains
+// frozen in NotifyRich for the research/watch audit, but is deliberately not
+// presented as an executable fill in this first-stage signal card.
 // Caption cap is 1024: optional lines are dropped lowest-priority-first until
-// it fits; the title and TP/SL lines always survive.
+// it fits; the title and causal alert/watch-state lines always survive.
 export function buildSignalCard(
   c: CoinLite,
   rich: NotifyRich,
   klass: NotifyClass = CLASS_FB,
   entryWatchActive = false,
 ): string {
-  const { plan } = rich;
-  // same math as CoinDetail's pctFromEntry
-  const pctFromEntry = (x: number) => fmtPct((x / plan.entry - 1) * 100, 1);
   const extras = rich.insights
     .filter((i) => CARD_EXTRA_IDS.has(i.id))
     .map((i) => i.title);
   const oiTag = c.oiTrusted === false ? '(滯後)' : '';
-  const ew = entryWatchActive ? rich.entryWatch : undefined;
+  const ew = rich.entryWatch;
   const bandLow = ew ? ew.support - 0.5 * ew.atr : 0;
   const bandHigh = ew ? ew.support + 0.5 * ew.atr : 0;
+  const invalidBelow = ew ? ew.support - ew.atr : 0;
 
   // [dropRank, line] in display order; rank 0 = never dropped, higher = cut first
   const lines: Array<[number, string]> = [
     [0, `${klass.title} — <b>${esc(c.symbol)}</b>/USDT · 強度 ${c.strength} · ${REGIME_LABEL[c.regime]}`],
-    [0, `價 ${fmtPrice(c.lastPrice)} · 原計劃參考位 ${fmtPrice(plan.entry)}(${ENTRY_KIND_LABEL[plan.kind]})`],
-    [0, ew ? `結構入場區 ${fmtPrice(bandLow)}–${fmtPrice(bandHigh)} · 狀態:⏳ 已開啟24h監察` : ''],
-    [0, `TP1 ${fmtPrice(plan.tp1)}(${pctFromEntry(plan.tp1)}) · TP2 ${fmtPrice(plan.tp2)}(${pctFromEntry(plan.tp2)}) · TP3 ${fmtPrice(plan.tp3)}(${pctFromEntry(plan.tp3)})`],
-    [0, `硬SL ${fmtPrice(plan.sl)}(${pctFromEntry(plan.sl)}) · Runner ${plan.runnerPct}%`],
-    // B ladder footnote mirrors lib/paper LADDERS.B (M4 comparison arm, not the default)
-    [2, `B梯對照:+10/+25/+50 · SL −15 · 出30/30/35留5%尾倉 · TP1後SL保本`],
+    [0, `通知價 ${fmtPrice(c.lastPrice)} · 尚未入場／未成交，勿當成可回溯成交價`],
+    [
+      0,
+      ew
+        ? `候選回踩觀察區 ${fmtPrice(bandLow)}–${fmtPrice(bandHigh)} · 只計TG通知後，最早30分鐘再等15m收線確認`
+        : `未建立可執行入場條件 · 勿追價`,
+    ],
+    [0, ew ? `失效參考 ${fmtPrice(invalidBelow)} · ${entryWatchActive ? '24h TG監察已開啟' : 'App只作影子觀察；未確認前不是入場'}` : ''],
     [3, extras.length ? `同時亮:${extras.map(esc).join(' · ')}` : ''],
     [2, `OI4h ${fmtPct(c.oi4h, 1)}${oiTag} · 費率 ${fmtPct(c.funding, 3)} · 量Z ${c.volZ.toFixed(1)} · 1h ${fmtPct(c.change1h, 2)}`],
     [1, c.riskFlags.length ? `⚠ 風險:${c.riskFlags.map(esc).join(' · ')}` : ''],
@@ -284,6 +308,8 @@ export async function notifyClassEdges(
   rich: Map<string, NotifyRich> | undefined,
   klass: NotifyClass,
 ): Promise<NotifyRunResult> {
+  const current = new Set(coins.filter((c) => klass.fires(c)).map((c) => c.symbol));
+  if (!klass.enabled) return { current, delivered: [], watchable: [] };
   const kv = readKvFile();
   const cfg = (kv['notify'] ?? {}) as Partial<NotifyCfg>;
   const cooldownMs = (cfg.cooldownH ?? 6) * 3600_000;
@@ -321,18 +347,7 @@ export async function notifyClassEdges(
       try {
         const caption = buildSignalCard(c, r, klass, followupEnabled);
         try {
-          const png = renderCandlePng(r.candles, {
-            symbol: c.symbol,
-            signal: CHART_SIGNAL_LABEL[klass.id],
-            entry: r.plan.entry,
-            stop: r.plan.sl,
-            targets: [r.plan.tp1, r.plan.tp2, r.plan.tp3],
-            lastPrice: c.lastPrice,
-            change1hPct: c.change1h,
-            strength: c.strength,
-            volZ: c.volZ,
-            oi4hPct: c.oi4h,
-          });
+          const png = renderCandlePng(r.candles, buildSignalChartOptions(c, r, klass));
           const out = await sendTelegramPhoto(cfg.telegramToken, cfg.telegramChatId, png, caption);
           sent = out.ok;
           messageId = out.messageId;

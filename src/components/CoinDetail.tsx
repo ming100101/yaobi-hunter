@@ -19,6 +19,7 @@ import InsightZone from './InsightZone';
 import BrandMark from './BrandMark';
 import { RegimeTag } from './RegimeTag';
 import { FundingPanel, OIPanel, PricePanel, StrengthPanel } from './ChartPanels';
+import { H1_EVIDENCE_DECISION } from '../lib/evidenceDecision';
 
 const ENTRY_KIND_LABEL: Record<EntryKind, string> = {
   breakout: '突破位',
@@ -194,12 +195,12 @@ export default function CoinDetail({
                   TOP10 已 {fmtAge(times.top10)}
                 </span>
               )}
-              {times?.fb && (
+              {H1_EVIDENCE_DECISION.badges.flushBreakout && times?.fb && (
                 <span className="age-chip fb" title="縮倉突破訊號亮起至今">
                   ⚡ 已 {fmtAge(times.fb)}
                 </span>
               )}
-              {times?.ea && (
+              {H1_EVIDENCE_DECISION.badges.earlyAccum && times?.ea && (
                 <span className="age-chip ea" title="早期蓄力訊號亮起至今">
                   蓄 已 {fmtAge(times.ea)}
                 </span>

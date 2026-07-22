@@ -168,3 +168,67 @@ No detector threshold or notification tier was changed. Instead, every live prod
 - `npm run test-evidence-copy` prevents the screener, detail, desktop-notification and Telegram surfaces from independently reintroducing an unlabelled frozen numeric claim.
 
 The product action is deliberately narrower than a promote/demote decision. Reclassification remains a user-level decision after adequate forward span; the immediate anti-overfit requirement is that old study numbers cannot masquerade as current evidence while that span accumulates.
+
+## 14. 2026-07-17 quantity-OI backfill — the "no backfill" premise was wrong
+
+Sections 3–4 treated promotion as inherently forward-looking because quantity OI "has no backfill". That was verified today to be **false for Binance Vision**: the daily metrics dumps (`data.binance.vision/data/futures/um/daily/metrics/<SYM>USDT/`) carry `sum_open_interest` — the exact quantity series the June cache was already built from — at 5m resolution, available back to at least 2025-01 (spot-checked BTC and SKL across 2025-01/2025-07/2026-01/2026-04/2026-05; July is published to T-2). The 30-day limit that motivated the claim belongs to the fapi REST endpoint, not to Vision.
+
+This backfill respects the spec's 「禁止假 backfill」 rule: it is the genuine `sum_open_interest` series from the same source the harness already used, not a USD-derived reconstruction and not OKX-spliced.
+
+Backfilled into `scripts/backtest-data/5m/`: metrics for 2026-04 (81 symbols) and 2026-05 (89), plus klines+metrics for 2026-01..03 (in progress at time of writing). The first three-month gate run (`--month all`, 2026-04..06) follows.
+
+## 15. 2026-07-17 three-month gate — the picture flips from data-starved to adverse
+
+With 2026-04..06 metrics cached, `npm run deep-reclaim -- --month all` evaluates 2,437 price candidates and 93 quantity-OI-qualified setups (18 confirms, 15 coins, 16 days, 3/3 months — the months requirement is met for the first time). The verdict remains `HARD FAIL / RESEARCH ONLY`, but the reasons changed character:
+
+- 24h net/event **−0.28%**, PF 0.34 (June alone had shown +0.02%; April and May are −0.56% and −0.42% per walk-forward fold).
+- Purged walk-forward is now **available and FAILS** (two of three folds negative on both horizons).
+- Matched deltas vs price-only are negative (−0.02% event / −0.21% coin at 24h); precision lift 0.29 all / 1.00 confirmed.
+- The shifted-OI placebo now **fails as required** (lift 0.00/0.25) — the placebo anomaly in Section 4 was indeed a small-sample symptom, and the gate's integrity checks behave correctly once fed three months.
+- All 21 geometry/knob robustness cells still fail.
+
+Honest reading: the binding constraint is no longer only data volume. On three months the frozen band-confirmation signal has **negative expectancy and no incremental edge over its price-only control**. June was simply the good month. This is the same shape S14 died of, measured properly.
+
+## 16. 2026-07-17 missed-cohort experiment — the 🟢 wick-miss leak, quantified
+
+Live forward evidence (07-14 → 07-16: 17 armed 🟡, 2 confirmed, 4 missed, 7 invalid) exposed a structural fault: `observeDeepReclaim` terminates a watch the moment a single 15m **high** touches `L0 + 2·ATR` (`missed`), before any confirmation check. The four largest forward movers (HOME +36%, AERGO +24%, CAP +21%, BASED +14% MFE from setup) were all 🟡-flagged and none confirmed — they gapped through the band and were terminally missed, while the two smallest movers confirmed. The tight band systematically excludes the fastest pumps (the ⚡ tight-base precedent).
+
+The harness now carries three research-only experiment cells (`EXPERIMENT_VARIANTS` in `backtest-deep-reclaim.ts`) testing the alternative confirmation seam: a strong **close** ≥ `L0 + 2·ATR` confirms (chase entry at the next 15m open, same fresh quantity-OI gate), and a wick touch alone is never terminal. Each cell has its own same-geometry price-only control; results print in a separate section and are **excluded from the promotion verdict and robustness battery**. The frozen `DEEP_RECLAIM_GEOMETRY_V0` and the production `observeDeepReclaim` are untouched; base-mode cells replicate the frozen semantics bit-for-bit (June regression identical, 35/35 detector tests pass, typecheck clean).
+
+Three-month results (2026-04..06, 93 OI-qualified alerts):
+
+| cell | confirms | 24h net/event | PF24 | base-missed captured | net/confirm on captured |
+|---|---|---|---|---|---|
+| `confirm_breakout_or_band` | 24 | −0.16% | 0.68 | 6 of 16 | +1.88% |
+| `confirm_breakout_only` | 9 | **+0.11%** | 1.80 | 5 of 16 | **+2.92%** |
+| `confirm_breakout_cost40` | 24 | −0.19% | 0.64 | 6 of 16 | +1.78% |
+
+Reading: the leak is real and the captured missed-movers are genuinely profitable (+1.9–2.9% per confirm even after chase entry and costs). But the capture cohort is small (5–6 events over 3 months), and folding it into the band rule (`or_band`) still leaves overall expectancy negative because the band leg itself is negative (Section 15). Only the pure breakout leg is positive, at n=9, with matched precision lift vs its own control still below 1 — far from the ×1.3 promotion bar. A six-month extension (2026-01..03 backfill) decides whether the breakout leg is signal or noise (Section 17).
+
+## 17. 2026-07-17 six-month verdict — the breakout leg shrinks with data; the base signal stays negative
+
+2026-01..03 klines+metrics were backfilled the same way (211 coin-months added; 59 coin-months unlisted — newly listed coins have no Q1 history). `--month all` now evaluates six months: 4,695 price candidates, 176 quantity-OI-qualified alerts, 30 confirms across 27 coins / 28 days / 6 months.
+
+**Base (frozen band rule): consistently non-positive at every scale tested.** 24h net/event −0.12%, PF 0.65, matched delta vs price-only −0.05% event / −0.13% coin, bootstrap lower bounds −0.31%/−0.35%, purged walk-forward FAIL (folds +0.20% / −0.28% / −0.22%). The placebo again fails as required, so this is a well-behaved gate reading, not an artifact. Verdict stays `HARD FAIL / RESEARCH ONLY`; with six months of genuine history the honest characterization moves from "data-starved" to "measured and adverse". June 2026 (+0.02%) was the best month in the sample and the one the signal was designed on.
+
+**Breakout experiment: the noise signature.** Comparing three-month to six-month results:
+
+| metric (`confirm_breakout_only`) | 3 months | 6 months |
+|---|---|---|
+| confirms | 9 | 19 |
+| 24h net/event | +0.11% | +0.08% |
+| PF24 | 1.80 | 1.52 |
+| missed-cohort captured | 5 of 16 | 10 of 30 |
+| net/confirm on captured (24h) | +2.92% | +0.96% |
+| hit10 on captured | 2/5 | 2/10 |
+| worst matched precision lift | 0.37 | 0.44 |
+
+Every profitability metric regressed toward zero as the sample doubled, and the precision lift never approached 1.0, let alone the ×1.3 promotion bar (the quantity-OI gate makes precision *worse* than the same rule without it). `confirm_breakout_or_band` stays negative (−0.10% event, PF 0.77). The capture events are also rare: ~2 per month across 90 symbols.
+
+**Decision.** The wick-miss leak is mechanically real — the frozen rules do discard the fastest movers, and the live 07-14→07-16 sample (HOME/AERGO/CAP/BASED) showed exactly that. But the measured fix is not a signal: its edge shrinks with data, its precision lift is far below the bar, and the base signal underneath is negative on six months of the very series whose absence previously excused it. Per the repo's iron rule (recording-only until lift ≥×1.3 + robustness), **the breakout confirmation must not ship to the runtime — not even as a test feed**. The experiment cells stay in the harness as the permanent, cheap way to re-measure this seam on future data. The remaining honest product question is user-level: whether the live test-only 早察 feed (default ON since 2026-07-13) is still worth its Telegram noise now that six months of backfilled evidence, not data scarcity, is what the gate is reporting.
+
+## 18. 2026-07-21 unified H1 audit cross-check
+
+Sections 14–17 remain the record of the 90-symbol dedicated harness. The root `HISTORICAL-EVIDENCE-AUDIT-2026-H1.md` is now the authoritative archive-wide comparison: it uses each month's complete eligible universe and the shared production detector path. It finds 2,681 armed events (10%×24h matched lift 1.38, net −0.19%) and 471 confirmations across 304 coins / 161 UTC days (lift 1.76, net +0.71%). The confirmation cohort still fails the frozen promotion battery because the day-block bootstrap lower bound is −0.26%; the armed cohort is net-negative. Both are classified `historical-fail`.
+
+This larger cross-check changes the sample counts, not the product decision. No badge, Telegram switch, paper-entry rule or tier was changed. Exact historical Top-1 delivery remains unreconstructable and therefore forward-only; the test-feed decision remains with the user.

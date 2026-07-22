@@ -4,6 +4,8 @@ import type { OutcomeSummary } from '../lib/strategyLab';
 import { paperBook, paperStats, type PaperState } from '../lib/paper';
 import BrandMark from './BrandMark';
 import NavTabs, { type AppTab } from './NavTabs';
+import { H1_RETIRED_STRATEGIES } from '../lib/evidenceDecision';
+import { VALIDATED_H1_REMEDIATIONS } from '../lib/evidenceRemediation';
 
 interface Props {
   tab: AppTab;
@@ -39,17 +41,21 @@ const fallbackRows: Array<Pick<LabRow, 'strategyId' | 'label'>> = [
   { strategyId: 'boarding-b2-v1', label: 'B2 EMA 收復' },
   { strategyId: 'boarding-b2-oi-v1', label: 'B2 + 合約數量 OI' },
   { strategyId: 'ema20-reclaim-control-v1', label: '普通 EMA20 收復對照' },
-  { strategyId: 'organic-spot-v0', label: '現貨帶動 proxy' },
-  { strategyId: 'spot-led-v1', label: '真實現貨帶動' },
+  { strategyId: 'spot-led-v1', label: '現貨帶動候選（真實語義）' },
+  { strategyId: 'top-t1-reversal-v2', label: 'T1 反轉確認 v2（空）' },
+  { strategyId: 'wbottom-w2-uncrowded-v2', label: 'W2 低擁擠趨勢 v2' },
   { strategyId: 'virgin-v2', label: '🚀 處女增倉 V2' },
   { strategyId: 'rebuild-r1', label: '📈 重建增倉 R1' },
   { strategyId: 'flush-breakout', label: '⚡ 縮倉突破' },
 ];
+const H1_VALIDATED_REMEDIATIONS = new Set<StrategyId>(VALIDATED_H1_REMEDIATIONS.map((row) => row.strategyId));
 
 const pct = (v: number, digits = 1) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(digits)}%`;
 const tone = (v: number) => (v > 0 ? 'up' : v < 0 ? 'down' : 'muted');
 
 function stateFor(row: LabRow): { text: string; cls: string } {
+  if (H1_RETIRED_STRATEGIES.has(row.strategyId)) return { text: 'H1 歷史失敗 · 影子', cls: 'failed' };
+  if (H1_VALIDATED_REMEDIATIONS.has(row.strategyId)) return { text: 'H1 validation pass · 前向影子', cls: 'collecting' };
   if (row.paperGate.pass) return { text: '可選通知', cls: 'verified' };
   if (row.shadowGate.pass) return { text: '模擬合格', cls: 'paper' };
   if (row.outcomes >= 100) return { text: '未通過', cls: 'failed' };
@@ -57,6 +63,12 @@ function stateFor(row: LabRow): { text: string; cls: string } {
 }
 
 function reasonFor(row: LabRow): string {
+  if (H1_RETIRED_STRATEGIES.has(row.strategyId)) {
+    return 'H1 固定歷史 gate 已失敗；保留 forward shadow 只供漂移／研究覆核，不會升 paper、通知或 live。';
+  }
+  if (H1_VALIDATED_REMEDIATIONS.has(row.strategyId)) {
+    return 'Jan–Mar discovery 後鎖定規則，Apr–Jun validation 通過；而家只收集 forward shadow，未開 badge、Telegram 或 paper。';
+  }
   if (row.paperGate.pass) return '完整研究及模擬 gate 已通過；通知仍要在設定頁由你親自開啟。';
   if (row.shadowGate.pass) return '研究 gate 已通過，正以 balanced-v1 累積正式模擬盤證據。';
   const reasons = row.shadowGate.reasons.slice(0, 2);
@@ -132,7 +144,7 @@ export default function StrategyView({ tab, onTab, paper }: Props) {
           <Metric label="回撤鎖" value={`−${policy.drawdownLockPct}%`} note="鎖定 policy，等待研究覆核" />
         </div>
         <div className="strategy-live-note muted">
-          現時通過 gate 嘅新策略持倉：0。未通過研究 gate 嘅 B2、現貨帶動、🚀、📈、⚡ 絕不會混入 combined portfolio。
+          現時通過 gate 嘅新策略持倉：0。H1 落敗策略只保留影子證據；現貨帶動只顯示真實語義候選，proxy 繼續做內部 control。
         </div>
       </section>
 

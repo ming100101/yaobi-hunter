@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { NotifyCfg } from '../types';
 import { kvGet, kvSet } from '../data/cache';
 import { ENTRY_WATCH_AVAILABLE } from '../lib/entryWatch';
+import { H1_EVIDENCE_DECISION } from '../lib/evidenceDecision';
 import BrandMark from './BrandMark';
 import NavTabs, { type AppTab } from './NavTabs';
 
@@ -21,7 +22,7 @@ const DEFAULT: SettingsNotifyCfg = {
   // prevents every current watch from emitting a second Telegram.
   entryWatchEnabled: ENTRY_WATCH_AVAILABLE,
   // Test monitoring is opt-out: older saved configs without this field are on.
-  deepReclaimTestEnabled: true,
+  deepReclaimTestEnabled: H1_EVIDENCE_DECISION.telegram.deepReclaimTestFeed,
 };
 
 interface Channel {
@@ -191,7 +192,8 @@ export default function SettingsView({ tab, onTab }: Props) {
             toast: notify.toast,
             cooldownH: notify.cooldownH,
             entryWatchEnabled: notify.entryWatchEnabled === true,
-            deepReclaimTestEnabled: notify.deepReclaimTestEnabled !== false,
+            deepReclaimTestEnabled:
+              H1_EVIDENCE_DECISION.telegram.deepReclaimTestFeed && notify.deepReclaimTestEnabled === true,
           }
         : undefined,
       settings: settings ?? undefined,
@@ -223,13 +225,15 @@ export default function SettingsView({ tab, onTab }: Props) {
           toast: b.notify.toast !== false,
           cooldownH: Number.isFinite(Number(b.notify.cooldownH)) ? Number(b.notify.cooldownH) : existing.cooldownH,
           entryWatchEnabled:
-            typeof b.notify.entryWatchEnabled === 'boolean'
+            ENTRY_WATCH_AVAILABLE &&
+            (typeof b.notify.entryWatchEnabled === 'boolean'
               ? b.notify.entryWatchEnabled
-              : existing.entryWatchEnabled === true,
+              : existing.entryWatchEnabled === true),
           deepReclaimTestEnabled:
-            typeof b.notify.deepReclaimTestEnabled === 'boolean'
+            H1_EVIDENCE_DECISION.telegram.deepReclaimTestFeed &&
+            (typeof b.notify.deepReclaimTestEnabled === 'boolean'
               ? b.notify.deepReclaimTestEnabled
-              : existing.deepReclaimTestEnabled !== false,
+              : existing.deepReclaimTestEnabled === true),
         });
       }
       if (b.paperCfg && typeof b.paperCfg === 'object') {
@@ -373,14 +377,15 @@ export default function SettingsView({ tab, onTab }: Props) {
           <label className="set-check">
             <input
               type="checkbox"
-              checked={cfg.deepReclaimTestEnabled !== false}
+              checked={H1_EVIDENCE_DECISION.telegram.deepReclaimTestFeed && cfg.deepReclaimTestEnabled === true}
               onChange={(e) => patch({ deepReclaimTestEnabled: e.target.checked })}
+              disabled={!H1_EVIDENCE_DECISION.telegram.deepReclaimTestFeed}
             />
             深跌收復測試監察
             <span className="set-tag on">研究限定</span>
           </label>
           <div className="set-hint">
-            開啟後會記錄「早察 → 等 L0 → 確認／結束」全程，並容許測試兩段 TG；只係市場研究提醒，唔係買入指令。舊設定冇呢一項時會當作開啟。
+            H1 歷史 gate 已失敗，自動測試 TG 已關閉。Detector、早察 → 確認 lifecycle 同 shadow evidence 繼續記錄；下面嘅合成測試按鈕只供人手驗證通道。
           </div>
         </div>
 

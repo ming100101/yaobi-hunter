@@ -1,4 +1,5 @@
 import type { CoinLite } from '../types';
+import { H1_EVIDENCE_DECISION } from './evidenceDecision';
 
 // Paper-trading engine (M1) — pure logic, NO I/O. Both the browser sweep
 // callback and the headless recorder call drivePaper() once per completed sweep
@@ -171,6 +172,40 @@ export function risingFbEdges(coins: CoinLite[], prevFb: Set<string>): Set<strin
   const edges = new Set<string>();
   for (const c of coins) if (c.flushBreakout && !prevFb.has(c.symbol)) edges.add(c.symbol);
   return edges;
+}
+
+// Runtime entry seam. The paper engine remains replayable/testable with an
+// explicit edge set, while production callers receive no new signal entries
+// after the H1 historical gate failure. Forward strategy-shadow candidates are
+// collected on a separate path and are intentionally unaffected.
+export function evidenceApprovedPaperEdges(coins: CoinLite[], prevFb: Set<string>): Set<string> {
+  return H1_EVIDENCE_DECISION.paperSignalEntry ? risingFbEdges(coins, prevFb) : new Set<string>();
+}
+
+// Cancel only unfilled intents from the retired signal policy. Existing paper
+// positions keep marking/exiting normally, and the old ledger is preserved.
+export function applyEvidencePaperDecision(state: PaperState, nowMs: number): PaperState {
+  const pending = state.confirmed?.pending;
+  if (H1_EVIDENCE_DECISION.paperSignalEntry || !state.confirmed || !pending?.length) return state;
+  const confirmed = state.confirmed;
+  const audit = [...(confirmed.entryAudit ?? [])];
+  for (const intent of pending) {
+    audit.push({
+      ts: nowMs,
+      sym: intent.sym,
+      action: 'expired',
+      signalTs: intent.signalTs,
+      signalPx: intent.signalPx,
+    });
+  }
+  return {
+    ...state,
+    confirmed: {
+      ...confirmed,
+      pending: [],
+      entryAudit: audit.length > LEDGER_CAP ? audit.slice(audit.length - LEDGER_CAP) : audit,
+    },
+  };
 }
 
 // The full set of ⚡ symbols this sweep — recorder/browser thread this back in as

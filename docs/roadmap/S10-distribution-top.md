@@ -47,3 +47,15 @@ project 首個 SHORT 方向 detector family。目標:妖幣拉完之後嘅頂部
 - pos ±25% 上限 clip 0.95(1.0 冇意義)— 預先聲明,唔算調參。
 - 觸發 bar volZ ≥ 1.5 對 T3 係 confirm bar(i)嘅要求,唔係 climax bar — 凍結如此。
 - M1 長 book(A/B/C)嘅數學一個 bit 都唔准變 — S 臂係獨立 driveBook 方向分支。
+
+## 2026-07-21 H1 evidence update
+
+T1–T4 已有六個月完整歷史，全部分類 `historical-fail`，不再係「n<20／等 E1」。Events 為 111／69／24／47；10%×24h matched lift ×0.88／×1.24／×0.97／×1.09。雖然個別 net 或 fold 為正，冇一項通過整套固定 gate；short card／paper S 臂仍保持關閉。
+
+## 2026-07-22 remediation v2
+
+舊 T1–T4 規則同失敗結論不變。新研究先用 Jan–Mar discovery 喺五個預先固定 broad filters 中揀出 `T1 + reversal-confirmed`，再鎖死規則驗 Apr–Jun：48 events／42 coins／38 days，10%×24h matched lift ×1.63，after-cost/funding +2.90%，2/3 正月份；四個 robustness cells 最低 lift ×1.47。規則要求完成 1H 已由 24h 上升轉為 1h 回落、位於 24h range 上 35%，quantity OI 4h 不跌。只加入 `top-t1-reversal-v2` forward shadow；短卡、paper S 臂、badge、Telegram 全部仍關閉。
+
+## 2026-07-22 frozen July holdout
+
+凍結上述 `reversal-confirmed` 規則後，以 2026-07-01..20 daily archive 做獨立 post-selection holdout。完整結果只有 7 events／7 coins／7 UTC days，10%×24h matched lift ×0.96、after-cost/funding +2.53%、worst cross-cell lift ×0.00、bootstrap L95 −3.21%。因未達預註冊 10 events／10 coins floor，分類為 `insufficient-sample`；不可宣稱 pass 或 fail，保持 forward shadow，短卡／paper／badge／Telegram 仍然關閉。

@@ -21,8 +21,7 @@ const EMA20: Rgb = [0xa7, 0x8b, 0xfa];
 const EMA50: Rgb = [0x4d, 0xc9, 0xff];
 const BB_LINE: Rgb = [0x70, 0x63, 0x91];
 const BB_FILL: Rgb = [0x16, 0x10, 0x29];
-const ENTRY: Rgb = [0xff, 0xc8, 0x57];
-const TARGET: Rgb = [0x31, 0xb9, 0x88];
+const PLANNED: Rgb = [0xff, 0xc8, 0x57];
 const RSI_LINE: Rgb = [0xf2, 0x8b, 0xd8];
 const ACCENT: Rgb = [0xd9, 0x46, 0xef];
 
@@ -110,8 +109,12 @@ class Raster {
     }
   }
 
-  vline(x: number, y0: number, y1: number, color: Rgb): void {
-    for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) this.px(x, y, color);
+  vline(x: number, y0: number, y1: number, color: Rgb, dash?: [number, number]): void {
+    const start = Math.min(y0, y1);
+    for (let y = start; y <= Math.max(y0, y1); y++) {
+      if (dash && (y - start) % (dash[0] + dash[1]) >= dash[0]) continue;
+      this.px(x, y, color);
+    }
   }
 
   line(x0: number, y0: number, x1: number, y1: number, color: Rgb): void {
@@ -211,9 +214,15 @@ const FONT: Record<string, number[]> = {
 export interface ChartOpts {
   symbol?: string;
   signal?: string;
-  entry?: number;
-  stop?: number;
-  targets?: number[];
+  // A first-stage Telegram signal has no execution fill. `alertPrice` is drawn
+  // only at the newest candle so it cannot masquerade as a historical entry.
+  alertPrice?: number;
+  // Planned future thresholds are named by what they actually mean. They must
+  // never be labelled ENTRY until a separate, post-alert fill is confirmed.
+  triggerPrice?: number;
+  invalidBelow?: number;
+  watchLow?: number;
+  watchHigh?: number;
   lastPrice?: number;
   change1hPct?: number;
   strength?: number;
@@ -294,7 +303,7 @@ export function renderCandlePng(candles5m: Candle[], opts: ChartOpts = {}): Buff
     low = Math.min(low, point.value);
     high = Math.max(high, point.value);
   }
-  for (const level of [opts.entry, opts.stop, last]) {
+  for (const level of [opts.alertPrice, opts.triggerPrice, opts.invalidBelow, last]) {
     if (finite(level)) {
       low = Math.min(low, level);
       high = Math.max(high, level);
@@ -330,14 +339,18 @@ export function renderCandlePng(candles5m: Candle[], opts: ChartOpts = {}): Buff
   if (finite(opts.volZ)) metrics.push('VOLZ ' + opts.volZ.toFixed(1));
   if (metrics.length) image.text(Math.max(350, width - 24 - textWidth(metrics.join(' | '), 1)), 72, metrics.join(' | '), AXIS_TEXT, 1);
 
-  const plan: string[] = [];
-  if (finite(opts.entry)) plan.push('E ' + fmtPrice(opts.entry));
-  for (let i = 0; i < (opts.targets?.length ?? 0); i++) {
-    const target = opts.targets?.[i];
-    if (finite(target)) plan.push('T' + (i + 1) + ' ' + fmtPrice(target));
+  if (finite(opts.alertPrice)) {
+    image.text(26, 72, 'ALERT ' + fmtPrice(opts.alertPrice) + ' | NO ENTRY YET', PLANNED, 1);
   }
-  if (finite(opts.stop)) plan.push('SL ' + fmtPrice(opts.stop));
-  if (plan.length) image.text(26, 76, plan.join(' | '), ENTRY, 1);
+  if (finite(opts.watchLow) && finite(opts.watchHigh) && opts.watchLow <= opts.watchHigh) {
+    image.text(
+      26,
+      88,
+      'WATCH ' + fmtPrice(opts.watchLow) + '-' + fmtPrice(opts.watchHigh) + ' | AFTER +30M 15M CLOSE',
+      AXIS_TEXT,
+      1,
+    );
+  }
 
   const plotRight = width - PAD_R;
   const priceBottom = height - PAD_B - RSI_H - PANEL_GAP;
@@ -405,9 +418,8 @@ export function renderCandlePng(candles5m: Candle[], opts: ChartOpts = {}): Buff
     axisLabel(y, price, color);
   };
 
-  level('ENTRY', opts.entry, ENTRY, [8, 5]);
-  level('SL', opts.stop, DOWN, [4, 5]);
-  (opts.targets ?? []).forEach((target, index) => level('TP' + (index + 1), target, TARGET, [3, 6]));
+  level('TRIGGER', opts.triggerPrice, PLANNED, [8, 5]);
+  level('INVALID', opts.invalidBelow, DOWN, [4, 5]);
 
   const candleWidth = Math.max(2, Math.floor(step * 0.62));
   for (let i = 0; i < bars.length; i++) {
@@ -431,9 +443,23 @@ export function renderCandlePng(candles5m: Candle[], opts: ChartOpts = {}): Buff
   const lastX = toX(BARS - 1);
   const lastY = toY(last);
   image.hline(PAD_L, plotRight, lastY, last >= bars[0].open ? UP : DOWN, [2, 5]);
-  image.circle(lastX, lastY, 6, ACCENT);
-  image.circle(lastX, lastY, 3, TEXT);
-  axisLabel(lastY, last, TEXT);
+  if (finite(opts.alertPrice)) {
+    const alertY = toY(opts.alertPrice);
+    image.vline(lastX, PAD_T, priceBottom, ACCENT, [4, 5]);
+    image.circle(lastX, alertY, 7, ACCENT);
+    image.circle(lastX, alertY, 3, TEXT);
+    const tag = 'ALERT';
+    const tagWidth = textWidth(tag, 1) + 8;
+    const tagX = Math.max(PAD_L + 4, lastX - tagWidth - 8);
+    const tagY = Math.max(PAD_T + 4, alertY - 20);
+    image.fillRect(tagX, tagY, tagWidth, 15, ACCENT);
+    image.text(tagX + 4, tagY + 4, tag, BG, 1);
+    axisLabel(alertY, opts.alertPrice, TEXT);
+  } else {
+    image.circle(lastX, lastY, 6, ACCENT);
+    image.circle(lastX, lastY, 3, TEXT);
+    axisLabel(lastY, last, TEXT);
+  }
 
   for (const threshold of [30, 50, 70]) {
     const y = toRsiY(threshold);

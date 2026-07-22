@@ -28,7 +28,7 @@ import {
 } from './data/cache';
 import { initNotifications, notifyNewSignals } from './lib/notify';
 import { buildScanRecord, buildSweepMeta } from './lib/recording';
-import { createPaperState, drivePaper, risingFbEdges } from './lib/paper';
+import { applyEvidencePaperDecision, createPaperState, drivePaper, evidenceApprovedPaperEdges } from './lib/paper';
 import type { PaperState } from './lib/paper';
 import { hydrateSignalLog } from './lib/signalLog';
 import { top10Ranks } from './lib/rank';
@@ -282,14 +282,15 @@ export default function App() {
   const drivePaperSweep = (coins: CoinLite[], tsMs: number, prevFb: Set<string>) => {
     void (async () => {
       try {
-        const state = (await kvGetFresh<PaperState>('paper-state')) ?? createPaperState();
+        const stored = (await kvGetFresh<PaperState>('paper-state')) ?? createPaperState();
+        const state = applyEvidencePaperDecision(stored, tsMs);
         const now = Date.now();
         if (now - state.lastDriverTs < PAPER_DRIVER_TTL && state.driver === 'recorder') {
           setPaper(state); // recorder is alive and owns this slot — just mirror it
           return;
         }
         const marks = new Map(coins.map((c) => [c.symbol, c.lastPrice] as [string, number]));
-        const next = drivePaper(state, marks, risingFbEdges(coins, prevFb), tsMs);
+        const next = drivePaper(state, marks, evidenceApprovedPaperEdges(coins, prevFb), tsMs);
         next.lastDriverTs = now;
         next.driver = 'app';
         await kvSet('paper-state', next);

@@ -1,0 +1,2121 @@
+{
+  "boundaries": [
+    "任何 validation-pass 只可進入 shadow cohort，唔會自動重開 live surface。",
+    "Telegram delivery、runtime selection、paper fill 同真實 slippage 仍然只可 forward 記錄。",
+    "本研究唔會覆寫 immutable H1 audit，亦唔會清除原 detector recordings。"
+  ],
+  "discoveryMonths": [
+    "2026-01",
+    "2026-02",
+    "2026-03"
+  ],
+  "items": [
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.97%，需要新 confirmation，而非放寬 gate。",
+      "key": "flush-breakout",
+      "label": "⚡ 縮倉突破",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.017640424202104505,
+          "coins": 227,
+          "events": 298,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 0.7852417547010715,
+          "primaryNetAfterCost": -0.008629266115134187,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.6963330415329249
+        },
+        {
+          "bootstrapLower95": -0.019745266344484133,
+          "coins": 118,
+          "events": 140,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": 0.8620551830840639,
+          "primaryNetAfterCost": -0.009577292251509037,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.6088235294117648
+        },
+        {
+          "bootstrapLower95": -0.018021723389318168,
+          "coins": 115,
+          "events": 128,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 0,
+          "primaryLift": 0.881359011627907,
+          "primaryNetAfterCost": -0.007353507152857315,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.5375664893617021
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.01861350712066473,
+          "coins": 191,
+          "events": 242,
+          "filter": "participation-quality",
+          "positiveMonths": 0,
+          "primaryLift": 0.7095859783606819,
+          "primaryNetAfterCost": -0.0104370653396158,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.7095859783606819
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "setup 並非獨立入場策略；原先用 entry gate 評分屬角色錯配。",
+      "key": "early-setup",
+      "label": "蓄 早期累積 setup",
+      "recommendation": "保留 setup／armed evidence，等獨立 confirmation。",
+      "role": "setup",
+      "selectedFilter": null,
+      "status": "role-corrected",
+      "train": null,
+      "trials": [],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.21%，需要新 confirmation，而非放寬 gate。",
+      "key": "squeeze-d3",
+      "label": "D3 squeeze breakout",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.00912388548070336,
+          "coins": 573,
+          "events": 5300,
+          "filter": "trend-aligned",
+          "positiveMonths": 1,
+          "primaryLift": 0.9147603445949853,
+          "primaryNetAfterCost": -0.002980147854951098,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9147603445949853
+        },
+        {
+          "bootstrapLower95": -0.007484097047186827,
+          "coins": 562,
+          "events": 2955,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 0.879174989462882,
+          "primaryNetAfterCost": -0.0024501762233539327,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.879174989462882
+        },
+        {
+          "bootstrapLower95": -0.01154103842679214,
+          "coins": 553,
+          "events": 2790,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 0,
+          "primaryLift": 0.9569642410602651,
+          "primaryNetAfterCost": -0.004051887448997546,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9569642410602651
+        },
+        {
+          "bootstrapLower95": -0.009160513300731223,
+          "coins": 237,
+          "events": 312,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": null,
+          "primaryNetAfterCost": 0.00044034125184234604,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.006311666793114856,
+          "coins": 569,
+          "events": 4055,
+          "filter": "participation-quality",
+          "positiveMonths": 2,
+          "primaryLift": 0.8953507627608309,
+          "primaryNetAfterCost": -0.0011570609165396635,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.8953507627608309
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.07%，需要新 confirmation，而非放寬 gate。",
+      "key": "boarding-b2",
+      "label": "B2 EMA20 reclaim",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.03878386297569009,
+          "coins": 141,
+          "events": 158,
+          "filter": "trend-aligned",
+          "positiveMonths": 1,
+          "primaryLift": 0.8964436407474381,
+          "primaryNetAfterCost": -0.015182874685448045,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.579240506329114
+        },
+        {
+          "bootstrapLower95": -0.009622782942854449,
+          "coins": 216,
+          "events": 273,
+          "filter": "flow-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": 1.070054945054945,
+          "primaryNetAfterCost": 0.0023785249529928187,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.907925407925408
+        },
+        {
+          "bootstrapLower95": -0.018033637527618225,
+          "coins": 186,
+          "events": 220,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 2,
+          "primaryLift": 0.8893939393939394,
+          "primaryNetAfterCost": -0.003661412442902128,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.7715224534501642
+        },
+        {
+          "bootstrapLower95": -0.010428580844331802,
+          "coins": 254,
+          "events": 334,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": 1.0835709533314324,
+          "primaryNetAfterCost": 0.0017669174706086913,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9704151019993912
+        },
+        {
+          "bootstrapLower95": -0.008599108685141365,
+          "coins": 256,
+          "events": 346,
+          "filter": "participation-quality",
+          "positiveMonths": 2,
+          "primaryLift": 1.0633556434438698,
+          "primaryNetAfterCost": 0.0027599311982068457,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9641241517969339
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.47%，需要新 confirmation，而非放寬 gate。",
+      "key": "rebuild-r1",
+      "label": "R1 增倉突破",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.024110268724872225,
+          "coins": 233,
+          "events": 352,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.2880084037515092,
+          "primaryNetAfterCost": -0.01427884151164822,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.097568048823738
+        },
+        {
+          "bootstrapLower95": -0.013203532558325048,
+          "coins": 209,
+          "events": 295,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 1.593379428501499,
+          "primaryNetAfterCost": -0.0033849099664339205,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.298207635819441
+        },
+        {
+          "bootstrapLower95": -0.019700299032166167,
+          "coins": 149,
+          "events": 192,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 0,
+          "primaryLift": 1.2241097383720931,
+          "primaryNetAfterCost": -0.012501556207057424,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.7376824817518247
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.01580804615743605,
+          "coins": 212,
+          "events": 307,
+          "filter": "participation-quality",
+          "positiveMonths": 0,
+          "primaryLift": 1.4982533163385734,
+          "primaryNetAfterCost": -0.0060731580079193895,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2518738820962303
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.34%，需要新 confirmation，而非放寬 gate。",
+      "key": "rebuild-r2",
+      "label": "R2 淨增倉",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.010352946041185569,
+          "coins": 457,
+          "events": 1299,
+          "filter": "trend-aligned",
+          "positiveMonths": 1,
+          "primaryLift": 1.0808408448079414,
+          "primaryNetAfterCost": -0.0036037733931357733,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.0391658683132268
+        },
+        {
+          "bootstrapLower95": -0.009421404679100777,
+          "coins": 432,
+          "events": 1050,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 1.1010108303249098,
+          "primaryNetAfterCost": -0.003541765023197427,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9428043414491053
+        },
+        {
+          "bootstrapLower95": -0.014269382945820723,
+          "coins": 422,
+          "events": 1071,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 0,
+          "primaryLift": 1.3079115367077065,
+          "primaryNetAfterCost": -0.00699081188067683,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.17055123936367
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.009977670699369156,
+          "coins": 446,
+          "events": 1120,
+          "filter": "participation-quality",
+          "positiveMonths": 0,
+          "primaryLift": 1.0403942374051072,
+          "primaryNetAfterCost": -0.0038717039762190797,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9345702347791484
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.46%，需要新 confirmation，而非放寬 gate。",
+      "key": "rebuild-r3",
+      "label": "R3 funding-cap rebuild",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.02385538012780325,
+          "coins": 228,
+          "events": 330,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.3073977775714243,
+          "primaryNetAfterCost": -0.0135627001503845,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.0205833973023357
+        },
+        {
+          "bootstrapLower95": -0.014111603523681826,
+          "coins": 209,
+          "events": 294,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 1.5771936933618214,
+          "primaryNetAfterCost": -0.003550229777226719,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2780455097850227
+        },
+        {
+          "bootstrapLower95": -0.019054867224575407,
+          "coins": 149,
+          "events": 192,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 0,
+          "primaryLift": 1.2241097383720931,
+          "primaryNetAfterCost": -0.012501556207057424,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.7376824817518247
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.015888338035236274,
+          "coins": 207,
+          "events": 296,
+          "filter": "participation-quality",
+          "positiveMonths": 1,
+          "primaryLift": 1.4710552944248596,
+          "primaryNetAfterCost": -0.005759397037308517,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2424527591658512
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.49%，需要新 confirmation，而非放寬 gate。",
+      "key": "virgin-v1",
+      "label": "V1 處女擴張",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.01635937190409015,
+          "coins": 529,
+          "events": 1905,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.5623167890530538,
+          "primaryNetAfterCost": -0.010724545875271002,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.3634375351975674
+        },
+        {
+          "bootstrapLower95": -0.013729141307146224,
+          "coins": 480,
+          "events": 1275,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": 1.3102527075812274,
+          "primaryNetAfterCost": -0.007131937902654902,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.1979856115107914
+        },
+        {
+          "bootstrapLower95": -0.012991821402045243,
+          "coins": 389,
+          "events": 854,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": 1.2659645444147924,
+          "primaryNetAfterCost": -0.006028738092385164,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.201670275286112
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.013397362040692437,
+          "coins": 495,
+          "events": 1389,
+          "filter": "participation-quality",
+          "positiveMonths": 0,
+          "primaryLift": 1.298097891299131,
+          "primaryNetAfterCost": -0.006981764125457551,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.1685824554325508
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.51%，需要新 confirmation，而非放寬 gate。",
+      "key": "virgin-v2",
+      "label": "V2 處女增倉突破",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.01654909079344873,
+          "coins": 520,
+          "events": 1747,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.6743134151468182,
+          "primaryNetAfterCost": -0.010919472441751326,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.425466134402427
+        },
+        {
+          "bootstrapLower95": -0.01722510964804846,
+          "coins": 455,
+          "events": 1113,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": 1.3811145601214398,
+          "primaryNetAfterCost": -0.0092317146207978,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2434602183482324
+        },
+        {
+          "bootstrapLower95": -0.012172100085023002,
+          "coins": 352,
+          "events": 693,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": 1.3972868217054266,
+          "primaryNetAfterCost": -0.004935295601392766,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2727272727272727
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.016015301693806185,
+          "coins": 473,
+          "events": 1225,
+          "filter": "participation-quality",
+          "positiveMonths": 0,
+          "primaryLift": 1.3667494824016564,
+          "primaryNetAfterCost": -0.008636535511749612,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2082132176542115
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.52%，需要新 confirmation，而非放寬 gate。",
+      "key": "virgin-v3",
+      "label": "V3 funding-cap virgin",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.015824146904169795,
+          "coins": 522,
+          "events": 1790,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.5237912360691848,
+          "primaryNetAfterCost": -0.010028417908502412,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.3236122512731474
+        },
+        {
+          "bootstrapLower95": -0.01372570997990527,
+          "coins": 477,
+          "events": 1256,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": 1.2946722159626574,
+          "primaryNetAfterCost": -0.006917299433663035,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.182513861522247
+        },
+        {
+          "bootstrapLower95": -0.012832761714156595,
+          "coins": 390,
+          "events": 855,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": 1.2754793961648305,
+          "primaryNetAfterCost": -0.005901396835135772,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2067527308838133
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.012688033503609189,
+          "coins": 480,
+          "events": 1304,
+          "filter": "participation-quality",
+          "positiveMonths": 0,
+          "primaryLift": 1.2416199875522362,
+          "primaryNetAfterCost": -0.005998409366236876,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.1162038271934243
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "部分 cell 有收益，但跨 10%/15% × 24h/48h robustness 不足。",
+      "key": "top-t1",
+      "label": "S10 T1 雙頂拒絕",
+      "recommendation": "只加入 v2 shadow cohort；仍需 forward confirmation，唔開 badge／TG／paper。",
+      "role": "entry",
+      "selectedFilter": "reversal-confirmed",
+      "status": "validation-pass",
+      "train": {
+        "bootstrapLower95": -0.007276867808157497,
+        "capability": "historical-pass",
+        "coins": 36,
+        "coverage": 0.848545910789333,
+        "days": 35,
+        "events": 39,
+        "horizons": [
+          {
+            "baselineRate": 0.29411764705882354,
+            "complete": 39,
+            "events": 39,
+            "hitRate": 0.4358974358974359,
+            "horizonH": 24,
+            "lift": 1.4820512820512821,
+            "meanReturn": 0.037010188242072514,
+            "medianReturn": 0.03349282296650713,
+            "netAfterCost": 0.024579556447200723,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.5,
+            "complete": 39,
+            "events": 39,
+            "hitRate": 0.6153846153846154,
+            "horizonH": 48,
+            "lift": 1.2307692307692308,
+            "meanReturn": 0.06590871494329963,
+            "medianReturn": 0.08274570295284256,
+            "netAfterCost": 0.04733541135355603,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.08823529411764706,
+            "complete": 39,
+            "events": 39,
+            "hitRate": 0.3333333333333333,
+            "horizonH": 24,
+            "lift": 3.7777777777777772,
+            "meanReturn": 0.037010188242072514,
+            "medianReturn": 0.03349282296650713,
+            "netAfterCost": 0.024579556447200723,
+            "targetPct": 15
+          },
+          {
+            "baselineRate": 0.20588235294117646,
+            "complete": 39,
+            "events": 39,
+            "hitRate": 0.41025641025641024,
+            "horizonH": 48,
+            "lift": 1.9926739926739927,
+            "meanReturn": 0.06590871494329963,
+            "medianReturn": 0.08274570295284256,
+            "netAfterCost": 0.04733541135355603,
+            "targetPct": 15
+          }
+        ],
+        "key": "top-t1-v2--reversal-confirmed",
+        "label": "S10 T1 雙頂拒絕 v2 reversal-confirmed",
+        "monthlyNet": {
+          "2026-01": 0.05724658623723667,
+          "2026-02": -0.04745522543939912,
+          "2026-03": 0.04103258301973354
+        },
+        "months": 3,
+        "reasons": [
+          "39 events / 36 coins / 35 days / 3 months",
+          "10%×24h matched lift 1.48",
+          "after-cost/funding mean 2.46%",
+          "2/3 positive monthly folds"
+        ],
+        "robustness": {
+          "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+          "status": "pass",
+          "worstLift": 1.2307692307692308
+        },
+        "topCoinProfitShare": 0.11332132290511054,
+        "topDayProfitShare": 0.20344998961722088,
+        "walkForwardPositive": 2,
+        "walkForwardTotal": 3
+      },
+      "trials": [
+        {
+          "bootstrapLower95": null,
+          "coins": 2,
+          "events": 2,
+          "filter": "trend-aligned",
+          "positiveMonths": 1,
+          "primaryLift": 2.5,
+          "primaryNetAfterCost": 0.08984274647694147,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.25
+        },
+        {
+          "bootstrapLower95": -0.021869885321955065,
+          "coins": 6,
+          "events": 6,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 6,
+          "primaryNetAfterCost": 0.0247370519094072,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 3
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 2,
+          "events": 2,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": null,
+          "primaryNetAfterCost": 0.08984274647694147,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.007276867808157497,
+          "coins": 36,
+          "events": 39,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": 1.4820512820512821,
+          "primaryNetAfterCost": 0.024579556447200723,
+          "score": 5.370776157540585,
+          "trainEligible": true,
+          "worstLift": 1.2307692307692308
+        },
+        {
+          "bootstrapLower95": -0.011863670075694896,
+          "coins": 9,
+          "events": 9,
+          "filter": "participation-quality",
+          "positiveMonths": 2,
+          "primaryLift": 2,
+          "primaryNetAfterCost": 0.024162167627122515,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 2
+        }
+      ],
+      "validation": {
+        "bootstrapLower95": -0.0014448817460997292,
+        "capability": "historical-pass",
+        "coins": 42,
+        "coverage": 0.848545910789333,
+        "days": 38,
+        "events": 48,
+        "horizons": [
+          {
+            "baselineRate": 0.2553191489361702,
+            "complete": 48,
+            "events": 48,
+            "hitRate": 0.4166666666666667,
+            "horizonH": 24,
+            "lift": 1.6319444444444446,
+            "meanReturn": 0.03340830163647376,
+            "medianReturn": 0.027341545967542846,
+            "netAfterCost": 0.029039838928140414,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.3829787234042553,
+            "complete": 48,
+            "events": 48,
+            "hitRate": 0.5625,
+            "horizonH": 48,
+            "lift": 1.46875,
+            "meanReturn": 0.012167499219395923,
+            "medianReturn": 0.027840815749783754,
+            "netAfterCost": 0.007250355886062599,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.14893617021276595,
+            "complete": 48,
+            "events": 48,
+            "hitRate": 0.25,
+            "horizonH": 24,
+            "lift": 1.6785714285714286,
+            "meanReturn": 0.03340830163647376,
+            "medianReturn": 0.027341545967542846,
+            "netAfterCost": 0.029039838928140414,
+            "targetPct": 15
+          },
+          {
+            "baselineRate": 0.2127659574468085,
+            "complete": 48,
+            "events": 48,
+            "hitRate": 0.3541666666666667,
+            "horizonH": 48,
+            "lift": 1.6645833333333333,
+            "meanReturn": 0.012167499219395923,
+            "medianReturn": 0.027840815749783754,
+            "netAfterCost": 0.007250355886062599,
+            "targetPct": 15
+          }
+        ],
+        "key": "top-t1-v2--reversal-confirmed",
+        "label": "S10 T1 雙頂拒絕 v2 reversal-confirmed",
+        "monthlyNet": {
+          "2026-04": 0.09774233429006125,
+          "2026-05": -0.009099971119609604,
+          "2026-06": 0.028688295558867056
+        },
+        "months": 3,
+        "reasons": [
+          "48 events / 42 coins / 38 days / 3 months",
+          "10%×24h matched lift 1.63",
+          "after-cost/funding mean 2.90%",
+          "2/3 positive monthly folds"
+        ],
+        "robustness": {
+          "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+          "status": "pass",
+          "worstLift": 1.46875
+        },
+        "topCoinProfitShare": 0.138898258228799,
+        "topDayProfitShare": 0.13941271573062458,
+        "walkForwardPositive": 2,
+        "walkForwardTotal": 3
+      }
+    },
+    {
+      "diagnosis": "平均值偏正，但 day-block confidence lower bound 未高於零。",
+      "key": "top-t2",
+      "label": "S10 T2 新高背離",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 1,
+          "events": 1,
+          "filter": "participation-quality",
+          "positiveMonths": 1,
+          "primaryLift": 0,
+          "primaryNetAfterCost": 0.042347462765531196,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "部分 cell 有收益，但跨 10%/15% × 24h/48h robustness 不足。",
+      "key": "top-t3",
+      "label": "S10 T3 climax rejection",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": null,
+          "coins": 3,
+          "events": 3,
+          "filter": "trend-aligned",
+          "positiveMonths": 1,
+          "primaryLift": 1.6666666666666665,
+          "primaryNetAfterCost": 0.06939794683918653,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.8333333333333333
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 2,
+          "events": 2,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": null,
+          "primaryNetAfterCost": 0.08984274647694147,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": 0.015065100841258778,
+          "coins": 17,
+          "events": 19,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 3,
+          "primaryLift": 1.4315789473684208,
+          "primaryNetAfterCost": 0.07350330962749158,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.1578947368421053
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 3,
+          "events": 3,
+          "filter": "participation-quality",
+          "positiveMonths": 2,
+          "primaryLift": 3,
+          "primaryNetAfterCost": 0.11863330441544533,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 2
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "部分 cell 有收益，但跨 10%/15% × 24h/48h robustness 不足。",
+      "key": "top-t4",
+      "label": "S10 T4 funding stall",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": null,
+          "coins": 5,
+          "events": 5,
+          "filter": "trend-aligned",
+          "positiveMonths": 1,
+          "primaryLift": 2,
+          "primaryNetAfterCost": 0.03018934600895406,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 2,
+          "events": 2,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 4.5,
+          "primaryNetAfterCost": 0.0001934553099061419,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 3,
+          "events": 3,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": null,
+          "primaryNetAfterCost": 0.05558175692240672,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.002673858415688889,
+          "coins": 5,
+          "events": 5,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": 2.04,
+          "primaryNetAfterCost": 0.0375774882730167,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9714285714285715
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "participation-quality",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.38%，需要新 confirmation，而非放寬 gate。",
+      "key": "wbottom-w1",
+      "label": "S11 W1 雙底",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.019326786366912495,
+          "coins": 423,
+          "events": 1037,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.1307261938891642,
+          "primaryNetAfterCost": -0.011517167605308758,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.0755270537804418
+        },
+        {
+          "bootstrapLower95": -0.019805182732026482,
+          "coins": 272,
+          "events": 446,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": 1.0873658224090248,
+          "primaryNetAfterCost": -0.010221169785250707,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.0304986763196282
+        },
+        {
+          "bootstrapLower95": -0.018137216157577258,
+          "coins": 194,
+          "events": 256,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": 1.0519301470588236,
+          "primaryNetAfterCost": -0.006471149219359069,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.033766188063063
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.02248430184979113,
+          "coins": 318,
+          "events": 611,
+          "filter": "participation-quality",
+          "positiveMonths": 0,
+          "primaryLift": 1.0597905912963197,
+          "primaryNetAfterCost": -0.013905881783775283,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9887281558523836
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.22%，需要新 confirmation，而非放寬 gate。",
+      "key": "wbottom-w2",
+      "label": "S11 W2 spring",
+      "recommendation": "只加入 v2 shadow cohort；仍需 forward confirmation，唔開 badge／TG／paper。",
+      "role": "entry",
+      "selectedFilter": "uncrowded-trend",
+      "status": "validation-pass",
+      "train": {
+        "bootstrapLower95": -0.009473746186038868,
+        "capability": "historical-pass",
+        "coins": 80,
+        "coverage": 0.848545910789333,
+        "days": 45,
+        "events": 86,
+        "horizons": [
+          {
+            "baselineRate": 0.20052424639580602,
+            "complete": 86,
+            "events": 86,
+            "hitRate": 0.313953488372093,
+            "horizonH": 24,
+            "lift": 1.5656634746922027,
+            "meanReturn": 0.0062621613450422635,
+            "medianReturn": -0.0076979318791063345,
+            "netAfterCost": 0.00710904553108878,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.290956749672346,
+            "complete": 86,
+            "events": 86,
+            "hitRate": 0.38372093023255816,
+            "horizonH": 48,
+            "lift": 1.3188246385920803,
+            "meanReturn": -0.010937656320066094,
+            "medianReturn": -0.031363020603033254,
+            "netAfterCost": -0.00783748120378703,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.09960681520314547,
+            "complete": 86,
+            "events": 86,
+            "hitRate": 0.1744186046511628,
+            "horizonH": 24,
+            "lift": 1.7510709914320686,
+            "meanReturn": 0.0062621613450422635,
+            "medianReturn": -0.0076979318791063345,
+            "netAfterCost": 0.00710904553108878,
+            "targetPct": 15
+          },
+          {
+            "baselineRate": 0.17038007863695936,
+            "complete": 86,
+            "events": 86,
+            "hitRate": 0.22093023255813954,
+            "horizonH": 48,
+            "lift": 1.296690518783542,
+            "meanReturn": -0.010937656320066094,
+            "medianReturn": -0.031363020603033254,
+            "netAfterCost": -0.00783748120378703,
+            "targetPct": 15
+          }
+        ],
+        "key": "wbottom-w2-v2--uncrowded-trend",
+        "label": "S11 W2 spring v2 uncrowded-trend",
+        "monthlyNet": {
+          "2026-01": -0.0023213292353863983,
+          "2026-02": 0.014251379066293013,
+          "2026-03": 0.01166132867890286
+        },
+        "months": 3,
+        "reasons": [
+          "86 events / 80 coins / 45 days / 3 months",
+          "10%×24h matched lift 1.57",
+          "after-cost/funding mean 0.71%",
+          "2/3 positive monthly folds"
+        ],
+        "robustness": {
+          "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+          "status": "pass",
+          "worstLift": 1.296690518783542
+        },
+        "topCoinProfitShare": 0.08534687242215708,
+        "topDayProfitShare": 0.18524196711423846,
+        "walkForwardPositive": 2,
+        "walkForwardTotal": 3
+      },
+      "trials": [
+        {
+          "bootstrapLower95": -0.03631360831835326,
+          "coins": 188,
+          "events": 269,
+          "filter": "trend-aligned",
+          "positiveMonths": 1,
+          "primaryLift": 1.290984292843029,
+          "primaryNetAfterCost": -0.019792166490096904,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2198129845084182
+        },
+        {
+          "bootstrapLower95": -0.012473825678589543,
+          "coins": 109,
+          "events": 144,
+          "filter": "flow-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": 1.2722851335656213,
+          "primaryNetAfterCost": 0.00654151580572848,
+          "score": 3.398721847704091,
+          "trainEligible": true,
+          "worstLift": 1.2722851335656213
+        },
+        {
+          "bootstrapLower95": -0.009473746186038868,
+          "coins": 80,
+          "events": 86,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 2,
+          "primaryLift": 1.5656634746922027,
+          "primaryNetAfterCost": 0.00710904553108878,
+          "score": 3.773258546584623,
+          "trainEligible": true,
+          "worstLift": 1.296690518783542
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.02165300778290973,
+          "coins": 131,
+          "events": 181,
+          "filter": "participation-quality",
+          "positiveMonths": 1,
+          "primaryLift": 1.306399631675875,
+          "primaryNetAfterCost": -0.0037123800884626586,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2784959502226036
+        }
+      ],
+      "validation": {
+        "bootstrapLower95": -0.0018392568320649508,
+        "capability": "historical-pass",
+        "coins": 65,
+        "coverage": 0.848545910789333,
+        "days": 41,
+        "events": 73,
+        "horizons": [
+          {
+            "baselineRate": 0.22673031026252982,
+            "complete": 73,
+            "events": 73,
+            "hitRate": 0.3835616438356164,
+            "horizonH": 24,
+            "lift": 1.6917087238644557,
+            "meanReturn": 0.02429706023215813,
+            "medianReturn": 0.014691791759821049,
+            "netAfterCost": 0.022314452834897858,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.3329355608591885,
+            "complete": 73,
+            "events": 73,
+            "hitRate": 0.547945205479452,
+            "horizonH": 48,
+            "lift": 1.6457995777483183,
+            "meanReturn": 0.018372403297359962,
+            "medianReturn": -0.0021107733873690915,
+            "netAfterCost": 0.016661666995990095,
+            "targetPct": 10
+          },
+          {
+            "baselineRate": 0.13484486873508353,
+            "complete": 73,
+            "events": 73,
+            "hitRate": 0.2054794520547945,
+            "horizonH": 24,
+            "lift": 1.5238210692205116,
+            "meanReturn": 0.02429706023215813,
+            "medianReturn": 0.014691791759821049,
+            "netAfterCost": 0.022314452834897858,
+            "targetPct": 15
+          },
+          {
+            "baselineRate": 0.21241050119331742,
+            "complete": 73,
+            "events": 73,
+            "hitRate": 0.3561643835616438,
+            "horizonH": 48,
+            "lift": 1.6767738956441434,
+            "meanReturn": 0.018372403297359962,
+            "medianReturn": -0.0021107733873690915,
+            "netAfterCost": 0.016661666995990095,
+            "targetPct": 15
+          }
+        ],
+        "key": "wbottom-w2-v2--uncrowded-trend",
+        "label": "S11 W2 spring v2 uncrowded-trend",
+        "monthlyNet": {
+          "2026-04": 0.03913827901414082,
+          "2026-05": 0.006143463210830964,
+          "2026-06": 0.01897483321404135
+        },
+        "months": 3,
+        "reasons": [
+          "73 events / 65 coins / 41 days / 3 months",
+          "10%×24h matched lift 1.69",
+          "after-cost/funding mean 2.23%",
+          "3/3 positive monthly folds"
+        ],
+        "robustness": {
+          "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+          "status": "pass",
+          "worstLift": 1.5238210692205116
+        },
+        "topCoinProfitShare": 0.15878029778916197,
+        "topDayProfitShare": 0.18366728269563598,
+        "walkForwardPositive": 3,
+        "walkForwardTotal": 3
+      }
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.31%，需要新 confirmation，而非放寬 gate。",
+      "key": "wbottom-w3",
+      "label": "S11 W3 OI-confirmed",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.020636581164331494,
+          "coins": 397,
+          "events": 893,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.1071799683221857,
+          "primaryNetAfterCost": -0.011880321435711133,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.074607584970705
+        },
+        {
+          "bootstrapLower95": -0.020313069990158313,
+          "coins": 276,
+          "events": 462,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": 1.0652593631687708,
+          "primaryNetAfterCost": -0.010625409039642505,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.994810410473061
+        },
+        {
+          "bootstrapLower95": -0.019033199692699176,
+          "coins": 201,
+          "events": 268,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": 1.004828797190518,
+          "primaryNetAfterCost": -0.007511797703209362,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.0003025413473174
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.024116348421270056,
+          "coins": 292,
+          "events": 519,
+          "filter": "participation-quality",
+          "positiveMonths": 1,
+          "primaryLift": 1.0513932117978362,
+          "primaryNetAfterCost": -0.01274668710638465,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.964116269915263
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.26%，需要新 confirmation，而非放寬 gate。",
+      "key": "early-pump",
+      "label": "S14 early pump",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.021570114406838915,
+          "coins": 382,
+          "events": 771,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.4418989170436451,
+          "primaryNetAfterCost": -0.014342399685819572,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.211239403953392
+        },
+        {
+          "bootstrapLower95": -0.015751245854294903,
+          "coins": 410,
+          "events": 811,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": 1.6639714563055854,
+          "primaryNetAfterCost": -0.007424375067483364,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.3509165144355397
+        },
+        {
+          "bootstrapLower95": -0.0193199769834139,
+          "coins": 279,
+          "events": 392,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 0,
+          "primaryLift": 1.2606148391560015,
+          "primaryNetAfterCost": -0.010992399741577678,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9818650232370176
+        },
+        {
+          "bootstrapLower95": -0.018450607623409065,
+          "coins": 275,
+          "events": 380,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": 1.0905263157894738,
+          "primaryNetAfterCost": -0.010685435704308506,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.8890160183066361
+        },
+        {
+          "bootstrapLower95": -0.0126855007254708,
+          "coins": 420,
+          "events": 885,
+          "filter": "participation-quality",
+          "positiveMonths": 1,
+          "primaryLift": 1.4581826064572072,
+          "primaryNetAfterCost": -0.004393819395009541,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2671561268957483
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.51%，需要新 confirmation，而非放寬 gate。",
+      "key": "spot-pump",
+      "label": "Spot pump",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.012745437622398291,
+          "coins": 374,
+          "events": 1729,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.210171296707198,
+          "primaryNetAfterCost": -0.0056524265645703205,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.0398854388939822
+        },
+        {
+          "bootstrapLower95": -0.011608191391494518,
+          "coins": 339,
+          "events": 976,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 1.2701900834758122,
+          "primaryNetAfterCost": -0.004277470583987768,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.158811475409836
+        },
+        {
+          "bootstrapLower95": -0.01531865159690762,
+          "coins": 338,
+          "events": 921,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 0,
+          "primaryLift": 1.0134045056875352,
+          "primaryNetAfterCost": -0.0078087592763478484,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9225697578587967
+        },
+        {
+          "bootstrapLower95": -0.009873204633552223,
+          "coins": 144,
+          "events": 181,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": 1.3239451348101157,
+          "primaryNetAfterCost": 0.006418517295702374,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.8743554327808472
+        },
+        {
+          "bootstrapLower95": -0.009284260755651818,
+          "coins": 364,
+          "events": 1624,
+          "filter": "participation-quality",
+          "positiveMonths": 2,
+          "primaryLift": 1.2801390209760322,
+          "primaryNetAfterCost": -0.0030317559425348155,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.1256665481692143
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "setup 並非獨立入場策略；原先用 entry gate 評分屬角色錯配。",
+      "key": "spot-accum",
+      "label": "Spot accumulation",
+      "recommendation": "保留 setup／armed evidence，等獨立 confirmation。",
+      "role": "setup",
+      "selectedFilter": null,
+      "status": "role-corrected",
+      "train": null,
+      "trials": [],
+      "validation": null
+    },
+    {
+      "diagnosis": "control 並非獨立入場策略；原先用 entry gate 評分屬角色錯配。",
+      "key": "leverage-froth",
+      "label": "Leverage froth control",
+      "recommendation": "保留作 veto／baseline。",
+      "role": "control",
+      "selectedFilter": null,
+      "status": "role-corrected",
+      "train": null,
+      "trials": [],
+      "validation": null
+    },
+    {
+      "diagnosis": "control 並非獨立入場策略；原先用 entry gate 評分屬角色錯配。",
+      "key": "umm-ema-control",
+      "label": "UMM EMA20 reclaim control",
+      "recommendation": "保留作 veto／baseline。",
+      "role": "control",
+      "selectedFilter": null,
+      "status": "role-corrected",
+      "train": null,
+      "trials": [],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.07%，需要新 confirmation，而非放寬 gate。",
+      "key": "umm-b2",
+      "label": "UMM B2",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.037402717853121596,
+          "coins": 141,
+          "events": 158,
+          "filter": "trend-aligned",
+          "positiveMonths": 1,
+          "primaryLift": 0.8964436407474381,
+          "primaryNetAfterCost": -0.015182874685448045,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.579240506329114
+        },
+        {
+          "bootstrapLower95": -0.009151738535703896,
+          "coins": 216,
+          "events": 273,
+          "filter": "flow-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": 1.070054945054945,
+          "primaryNetAfterCost": 0.0023785249529928187,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.907925407925408
+        },
+        {
+          "bootstrapLower95": -0.017982933553699627,
+          "coins": 186,
+          "events": 220,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 2,
+          "primaryLift": 0.8893939393939394,
+          "primaryNetAfterCost": -0.003661412442902128,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.7715224534501642
+        },
+        {
+          "bootstrapLower95": -0.009883813783544748,
+          "coins": 254,
+          "events": 334,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": 1.0835709533314324,
+          "primaryNetAfterCost": 0.0017669174706086913,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9704151019993912
+        },
+        {
+          "bootstrapLower95": -0.008902264901897935,
+          "coins": 256,
+          "events": 346,
+          "filter": "participation-quality",
+          "positiveMonths": 2,
+          "primaryLift": 1.0633556434438698,
+          "primaryNetAfterCost": 0.0027599311982068457,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9641241517969339
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "平均值偏正，但 day-block confidence lower bound 未高於零。",
+      "key": "umm-b2-oi",
+      "label": "UMM B2 quantity-OI challenger",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.10566242603296543,
+          "coins": 10,
+          "events": 10,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 2.179047619047619,
+          "primaryNetAfterCost": -0.0633176369991008,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0
+        },
+        {
+          "bootstrapLower95": -0.025283502390428897,
+          "coins": 41,
+          "events": 42,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 1.0304232804232805,
+          "primaryNetAfterCost": 0.019103892436696284,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.0304232804232805
+        },
+        {
+          "bootstrapLower95": -0.028521670728368254,
+          "coins": 32,
+          "events": 34,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": 1.0155709342560555,
+          "primaryNetAfterCost": 0.019068067158046945,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.8030095759233926
+        },
+        {
+          "bootstrapLower95": -0.013453127322237792,
+          "coins": 59,
+          "events": 62,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 2,
+          "primaryLift": 1.318100358422939,
+          "primaryNetAfterCost": 0.020844959439196065,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.2001380695368395
+        },
+        {
+          "bootstrapLower95": -0.028502496934803074,
+          "coins": 41,
+          "events": 42,
+          "filter": "participation-quality",
+          "positiveMonths": 1,
+          "primaryLift": 1.068295739348371,
+          "primaryNetAfterCost": 0.016878418981534873,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.068295739348371
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "setup 並非獨立入場策略；原先用 entry gate 評分屬角色錯配。",
+      "key": "deep-reclaim-armed",
+      "label": "S15 deep reclaim quantity-OI armed",
+      "recommendation": "保留 setup／armed evidence，等獨立 confirmation。",
+      "role": "setup",
+      "selectedFilter": null,
+      "status": "role-corrected",
+      "train": null,
+      "trials": [],
+      "validation": null
+    },
+    {
+      "diagnosis": "平均值偏正，但 day-block confidence lower bound 未高於零。",
+      "key": "deep-reclaim-confirmed",
+      "label": "S15 deep reclaim confirmed",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": 0.002824157320506219,
+          "coins": 43,
+          "events": 45,
+          "filter": "trend-aligned",
+          "positiveMonths": 3,
+          "primaryLift": 2.7658119658119658,
+          "primaryNetAfterCost": 0.040973709095556,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.7383093016680802
+        },
+        {
+          "bootstrapLower95": -0.022155124990588037,
+          "coins": 86,
+          "events": 93,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 1.4876660341555978,
+          "primaryNetAfterCost": -0.006359234639768222,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.4090322580645163
+        },
+        {
+          "bootstrapLower95": -0.008287315389439475,
+          "coins": 53,
+          "events": 59,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 2,
+          "primaryLift": 2.6252354048964217,
+          "primaryNetAfterCost": 0.020472133904749185,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.866066137252578
+        },
+        {
+          "bootstrapLower95": -0.023258606707085155,
+          "coins": 91,
+          "events": 100,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 1.2398823529411764,
+          "primaryNetAfterCost": -0.011315524028316022,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 1.167109634551495
+        },
+        {
+          "bootstrapLower95": -0.03168698962631468,
+          "coins": 35,
+          "events": 37,
+          "filter": "participation-quality",
+          "positiveMonths": 1,
+          "primaryLift": 0.9494109494109495,
+          "primaryNetAfterCost": -0.011548617558854378,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9494109494109495
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.49%，需要新 confirmation，而非放寬 gate。",
+      "key": "entry-watch-r1",
+      "label": "Entry-watch R1 breakout retest",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.01893689506136955,
+          "coins": 201,
+          "events": 273,
+          "filter": "trend-aligned",
+          "positiveMonths": 0,
+          "primaryLift": 1.01994301994302,
+          "primaryNetAfterCost": -0.009633355126849711,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9835164835164836
+        },
+        {
+          "bootstrapLower95": -0.016020911441963513,
+          "coins": 167,
+          "events": 213,
+          "filter": "flow-confirmed",
+          "positiveMonths": 1,
+          "primaryLift": 0.8235367762128326,
+          "primaryNetAfterCost": -0.005296599147121564,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.6818242790073775
+        },
+        {
+          "bootstrapLower95": -0.017144058622173254,
+          "coins": 124,
+          "events": 151,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 0,
+          "primaryLift": 0.766887417218543,
+          "primaryNetAfterCost": -0.00931491052141497,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.766887417218543
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.01548979177651291,
+          "coins": 167,
+          "events": 219,
+          "filter": "participation-quality",
+          "positiveMonths": 1,
+          "primaryLift": 0.8221581350636865,
+          "primaryNetAfterCost": -0.005489230253008444,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.7676169320004935
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "原規則 10%×24h after-cost expectancy -0.28%，需要新 confirmation，而非放寬 gate。",
+      "key": "entry-watch-v2",
+      "label": "Entry-watch V2 breakout retest",
+      "recommendation": "固定 v2 hypotheses 喺 discovery 已不足；維持退休。",
+      "role": "entry",
+      "selectedFilter": null,
+      "status": "no-train-candidate",
+      "train": null,
+      "trials": [
+        {
+          "bootstrapLower95": -0.010236481522054659,
+          "coins": 483,
+          "events": 1429,
+          "filter": "trend-aligned",
+          "positiveMonths": 1,
+          "primaryLift": 0.8346633224169964,
+          "primaryNetAfterCost": -0.0030290006423112125,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.7814560741266671
+        },
+        {
+          "bootstrapLower95": -0.014506000817173516,
+          "coins": 408,
+          "events": 876,
+          "filter": "flow-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": 0.7803433287828146,
+          "primaryNetAfterCost": -0.007772923722436858,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.7635202625570776
+        },
+        {
+          "bootstrapLower95": -0.008834664321874356,
+          "coins": 299,
+          "events": 587,
+          "filter": "uncrowded-trend",
+          "positiveMonths": 1,
+          "primaryLift": 0.9544181912450929,
+          "primaryNetAfterCost": -0.0011155466830130676,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.9297274275979556
+        },
+        {
+          "bootstrapLower95": null,
+          "coins": 0,
+          "events": 0,
+          "filter": "reversal-confirmed",
+          "positiveMonths": 0,
+          "primaryLift": null,
+          "primaryNetAfterCost": null,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": null
+        },
+        {
+          "bootstrapLower95": -0.013466094600687577,
+          "coins": 429,
+          "events": 1005,
+          "filter": "participation-quality",
+          "positiveMonths": 0,
+          "primaryLift": 0.8367320374869838,
+          "primaryNetAfterCost": -0.006713128937519079,
+          "score": null,
+          "trainEligible": false,
+          "worstLift": 0.8041880151481399
+        }
+      ],
+      "validation": null
+    },
+    {
+      "diagnosis": "ranking 並非獨立入場策略；原先用 entry gate 評分屬角色錯配。",
+      "key": "strength70",
+      "label": "Strength ≥70 crossing",
+      "recommendation": "保留排序用途，禁止當 entry。",
+      "role": "ranking",
+      "selectedFilter": null,
+      "status": "role-corrected",
+      "train": null,
+      "trials": [],
+      "validation": null
+    },
+    {
+      "diagnosis": "ranking 並非獨立入場策略；原先用 entry gate 評分屬角色錯配。",
+      "key": "top10",
+      "label": "全市場 Top 10 entry",
+      "recommendation": "保留排序用途，禁止當 entry。",
+      "role": "ranking",
+      "selectedFilter": null,
+      "status": "role-corrected",
+      "train": null,
+      "trials": [],
+      "validation": null
+    }
+  ],
+  "protocol": [
+    "原 H1 audit 同失敗分類保持不變；v2 係新研究 cohort。",
+    "只使用 decision timestamp 已完成 bar、as-of OI／funding 同當時 BTC regime。",
+    "五個 broad hypotheses 預先固定；2026-01 至 03 只用作 discovery，2026-04 至 06 只驗證一次。",
+    "Validation 失敗後不得再用同一 H1 validation months 調門檻。",
+    "Ranking、control、setup 不再錯當獨立 entry strategy。"
+  ],
+  "remediationId": "historical-evidence-remediation-2026-h1-v1",
+  "sourceAuditId": "historical-evidence-audit-2026-h1",
+  "sourceFingerprint": "7906082333c5765f5f5e20b595b764cf3cda4165996d370294bb9a24dc294522",
+  "summary": {
+    "entryCandidates": 23,
+    "failedItems": 30,
+    "noTrainCandidate": 21,
+    "roleCorrected": 7,
+    "validationFail": 0,
+    "validationPass": 2
+  },
+  "v": 1,
+  "validationMonths": [
+    "2026-04",
+    "2026-05",
+    "2026-06"
+  ]
+}

@@ -2,10 +2,10 @@
 // window from forward observations. Keep this copy centralised so badges,
 // detail reads, desktop notifications and Telegram cards cannot silently drift.
 
-export const EVIDENCE_AUDIT_AS_OF = '2026-07-14';
+export const EVIDENCE_AUDIT_AS_OF = '2026-07-21';
 
-export const FORWARD_REVALIDATION_NOTE = 'Binance 前向重驗中，最新結果請看「記錄」';
-export const FLUSH_FORWARD_NOTE = `截至 ${EVIDENCE_AUDIT_AS_OF}，Binance 前向未證實 24h 優勢，最新結果請看「記錄」`;
+export const FORWARD_REVALIDATION_NOTE = '2026 H1 歷史 gate 已失敗；只保留 shadow evidence，最新結果請看「記錄」';
+export const FLUSH_FORWARD_NOTE = `截至 ${EVIDENCE_AUDIT_AS_OF}，H1 歷史 gate 已失敗；badge、通知同新 paper entry 已關閉，只保留 shadow evidence`;
 
 export function oldStudyEvidence(summary: string, forwardNote = FORWARD_REVALIDATION_NOTE): string {
   return `舊研究窗：${summary}。${forwardNote}；非現時命中率，僅供排序參考。`;
@@ -22,17 +22,17 @@ export const SIGNAL_EVIDENCE_COPY = {
       `舊研究窗曾見提升；${FLUSH_FORWARD_NOTE}（僅供排序參考）`,
   },
   earlyAccum: {
-    badge: '早期蓄力 — 舊研究窗觀察級；Binance 前向重驗中，非進場訊號',
+    badge: '早期蓄力 — H1 歷史 gate 已失敗；只保留 shadow evidence，非進場訊號',
   },
   spotPump: {
-    badge: '現貨帶動 — 現貨量Z 驅動；舊研究窗結果，Binance 前向重驗中，非進場訊號',
+    badge: '現貨帶動 — H1 只列細樣本候選；只保留真實語義 forward shadow，非進場訊號',
   },
   rebuildBreakout: {
-    badge: '增倉突破 — OI 縮完重建後帶量突破；舊研究窗結果，Binance 前向重驗中，非進場訊號',
-    notify: '舊研究窗曾見提升，但期望值薄；Binance 前向重驗中，最新結果見「記錄」（僅供排序參考）',
+    badge: '增倉突破 — H1 歷史 gate 已失敗；只保留 shadow evidence，非進場訊號',
+    notify: 'H1 歷史 gate 已失敗；通知已關閉，只保留 shadow evidence',
   },
   virginBreakout: {
-    badge: '處女增倉 — 48h 零 flush 純增倉擴張突破；舊研究窗結果，Binance 前向重驗中，非進場訊號',
-    notify: '舊研究窗曾見提升，但期望值薄；Binance 前向重驗中，最新結果見「記錄」（僅供排序參考）',
+    badge: '處女增倉 — H1 歷史 gate 已失敗；只保留 shadow evidence，非進場訊號',
+    notify: 'H1 歷史 gate 已失敗；通知已關閉，只保留 shadow evidence',
   },
 } as const;

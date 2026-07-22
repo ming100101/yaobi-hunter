@@ -56,3 +56,10 @@
 - getUpdates offset must be persisted (kv `tg-offset`) or restarts replay old commands — dedup by update_id.
 - Clock skew breaks signing — use server time from `GET /api/v5/public/time` if local signing gets 401s.
 - Do NOT auto-retry a failed order placement (could double-fill); report and wait for human.
+
+## 2026-07-21 historical-evidence boundary
+
+`forward-only`: T1's unlock condition of one positive paper-P&L month belongs
+to the actual paper account and cannot be satisfied by Strategy replay. The H1
+archive can estimate a frozen rule's market outcome, but cannot reconstruct
+paper fills, account state, runtime availability or real slippage.

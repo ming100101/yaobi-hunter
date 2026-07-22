@@ -131,3 +131,9 @@ Steps 3 (detectors, 2/3) + 4 (recording meta) done, **recording-only** (`SPOT_SH
 **Ship 決定（owner 拍板:出）**：spot-pump 已 **SHIPPED** — `SPOT_PUMP_SHIPPED=true`,詳情頁 `spot-led-pump` insight（帶「回測 lift ×1.79,排序參考,非進場訊號」caveat）+ screener 「現」badge（`.sp-badge`,綠 bull tint,`toLite.spotPump` 經 `spotPumpFires` gated,只候選幣有現貨數據先會著)。stealth-spot-accum `SPOT_ACCUM_SHIPPED=false` 維持 recording-only。驗證:typecheck + forced-positive harness（spotPumpFires/toLite.spotPump=true、interpret 出 spot-led-pump bull p8)、平盤 6 幣 negative path 乾淨。browser render 未做（另一 session 佔住 5173,唔郁 shared config)。
 
 **仲未做**：basis-anomaly（第3 detector,需 history);App 側 spotSignals;screener-badge scan 接線（若出）;regime/forward 交叉確認。
+
+## 2026-07-21 H1 evidence update
+
+統一逐月 archive-universe audit 將 Spot pump（6,552 events，matched lift ×1.20，net −0.51%）同 Spot accumulation（2,900，×0.95，net −0.31%）列為 `historical-fail`，唔再屬等待 recordings。Organic spot proxy / True spot-led 係同一個細 cohort（27 events / 16 coins，×1.65，net +0.77%）並列 `historical-pass` 候選；只可交 forward holdout 覆核，唔自動改 badge／通知。完整數字見根目錄 H1 audit。
+
+用戶其後拍板：現貨 badge 維持 OFF；Strategy Lab 產品面只顯示真實語義 `spot-led-v1` 候選，`organic-spot-v0` 留做內部 proxy control。兩者只收 shadow，唔入 paper／通知。

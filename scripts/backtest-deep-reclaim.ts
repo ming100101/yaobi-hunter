@@ -153,6 +153,10 @@ interface Variant {
   expiryH: number;
   costBps: number;
   geometryRules?: Readonly<DeepReclaimGeometryRules>;
+  // 'band' (default) replicates the frozen rules: any 15m HIGH touching
+  // L0+2·ATR is a terminal miss. Breakout modes treat a CLOSE >= L0+2·ATR as a
+  // confirmation (chase entry at the next open) and never miss on a wick.
+  confirm?: 'band' | 'breakout-or-band' | 'breakout-only';
 }
 
 const BASE_VARIANT: Variant = { name: 'base', q4Min: 3, bandAtr: 0.5, expiryH: 24, costBps: COST_BPS };
@@ -179,6 +183,20 @@ const ROBUST_VARIANTS: Variant[] = [
   { ...BASE_VARIANT, name: 'position_hi_0.875', geometryRules: { ...DEEP_RECLAIM_GEOMETRY_V0, posMax: 0.875 } },
   { ...BASE_VARIANT, name: 'momentum_lo_4.5', geometryRules: { ...DEEP_RECLAIM_GEOMETRY_V0, ret4hMaxPct: 4.5 } },
   { ...BASE_VARIANT, name: 'momentum_hi_7.5', geometryRules: { ...DEEP_RECLAIM_GEOMETRY_V0, ret4hMaxPct: 7.5 } },
+];
+
+// Missed-cohort experiment (2026-07-17). Live forward evidence showed the
+// frozen rules terminate a watch the moment one 15m HIGH touches L0+2·ATR
+// ('missed'), which discards exactly the fastest movers. These cells test the
+// alternative confirmation seam (strong CLOSE through L0+2·ATR confirms with
+// the same fresh quantity-OI gate, filled at the next open) against their own
+// same-geometry price-only controls. Research-only: reported in a separate
+// section and never fed into the promotion verdict, robustness battery, or
+// the frozen production rules.
+const EXPERIMENT_VARIANTS: Variant[] = [
+  { ...BASE_VARIANT, name: 'confirm_breakout_or_band', confirm: 'breakout-or-band' },
+  { ...BASE_VARIANT, name: 'confirm_breakout_only', confirm: 'breakout-only' },
+  { ...BASE_VARIANT, name: 'confirm_breakout_cost40', confirm: 'breakout-or-band', costBps: 40 },
 ];
 
 function parseArgs(): Config {
@@ -575,14 +593,21 @@ function simulateVariant(
   variant: Variant,
 ): MethodRow | null {
   if (observations && variantOiDecision(observations[alert.setupIdx], alert.price.setupTs, variant.q4Min) !== 'pass') return null;
+  const confirmMode = variant.confirm ?? 'band';
   const expiresAt = alert.price.setupTs + variant.expiryH * HOUR_MS;
   const bandHigh = alert.price.l0 + variant.bandAtr * alert.price.atr14;
   for (let i = alert.setupIdx + 1; i < bars.length; i++) {
     const bar = bars[i];
     if (bar.closeTs >= expiresAt) return completedRow(variant.name, alert, bars, null, 'expired', null, variant.costBps);
     if (bar.close < alert.price.troughLow) return completedRow(variant.name, alert, bars, null, 'invalidated', null, variant.costBps);
-    if (bar.high >= alert.price.missedAbove) return completedRow(variant.name, alert, bars, null, 'missed', null, variant.costBps);
-    if (!(bar.close >= alert.price.l0 && bar.close <= bandHigh)) continue;
+    if (confirmMode === 'band' && bar.high >= alert.price.missedAbove) return completedRow(variant.name, alert, bars, null, 'missed', null, variant.costBps);
+    const bandConfirm = bar.close >= alert.price.l0 && bar.close <= bandHigh;
+    const breakoutConfirm = bar.close >= alert.price.missedAbove;
+    const priceConfirm =
+      confirmMode === 'band' ? bandConfirm :
+      confirmMode === 'breakout-or-band' ? bandConfirm || breakoutConfirm :
+      breakoutConfirm;
+    if (!priceConfirm) continue;
     const oiCode = observations ? variantOiDecision(observations[i], bar.closeTs, variant.q4Min) : 'pass';
     if (oiCode === 'missing' || oiCode === 'stale' || oiCode === 'future') continue;
     if (oiCode === 'rejected') return completedRow(variant.name, alert, bars, null, 'oi-rejected', null, variant.costBps);
@@ -698,6 +723,8 @@ async function main(): Promise<void> {
   const variantRows = new Map(ROBUST_VARIANTS.map((v) => [v.name, [] as MethodRow[]]));
   const variantControlRows = new Map(ROBUST_VARIANTS.map((v) => [v.name, [] as MethodRow[]]));
   const variantCandidateCounts = new Map(ROBUST_VARIANTS.map((v) => [v.name, 0]));
+  const experimentRows = new Map(EXPERIMENT_VARIANTS.map((v) => [v.name, [] as MethodRow[]]));
+  const experimentControlRows = new Map(EXPERIMENT_VARIANTS.map((v) => [v.name, [] as MethodRow[]]));
   const metricsMonths = new Set<string>();
   const setupOi = {
     qty: { pass: 0, missing: 0, stale: 0, future: 0, rejected: 0 },
@@ -757,6 +784,16 @@ async function main(): Promise<void> {
         if (control) variantControlRows.get(variant.name)!.push(control);
       }
     }
+
+    // Missed-cohort experiment cells share the production geometry candidates.
+    for (const variant of EXPERIMENT_VARIANTS) {
+      for (const alert of extracted.alerts) {
+        const row = simulateVariant(alert, bars, oi.qty, variant);
+        if (row) experimentRows.get(variant.name)!.push(row);
+        const control = simulateVariant(alert, bars, null, variant);
+        if (control) experimentControlRows.get(variant.name)!.push(control);
+      }
+    }
   }
 
   const summaries = Object.fromEntries(
@@ -812,6 +849,38 @@ async function main(): Promise<void> {
         matchedDelta: { h24: delta24, h48: delta48 },
         pass,
       }];
+    }),
+  );
+
+  // Missed-cohort experiment report (research-only, never a gate input).
+  const baseQtyById = new Map(methodRows.qty_oi.map((r) => [r.id, r]));
+  const baseMissedCount = methodRows.qty_oi.filter((r) => r.terminal === 'missed').length;
+  const experiments = Object.fromEntries(
+    EXPERIMENT_VARIANTS.map((variant) => {
+      const rows = experimentRows.get(variant.name)!;
+      const controls = experimentControlRows.get(variant.name)!;
+      const h24 = summary(variant.name, rows, 24);
+      const h48 = summary(variant.name, rows, 48);
+      const lift = Object.fromEntries(
+        ([24, 48] as Horizon[]).map((horizon) => [`h${horizon}`, {
+          all: matchedPrecisionLift(researchRows(rows, horizon), researchRows(controls, horizon), false),
+          confirmed: matchedPrecisionLift(researchRows(rows, horizon), researchRows(controls, horizon), true),
+        }]),
+      );
+      const delta = { h24: matchedComparison(rows, controls, 24), h48: matchedComparison(rows, controls, 48) };
+      // The motivating cohort: alerts the frozen rules terminally missed.
+      const onBaseMissed = rows.filter((r) => baseQtyById.get(r.id)?.terminal === 'missed');
+      const captured = onBaseMissed.filter((r) => r.confirmed);
+      const missedCohort = {
+        baseMissed: baseMissedCount,
+        evaluated: onBaseMissed.length,
+        captured: captured.length,
+        h24NetPerConfirm: mean(captured.map((r) => r.h24.net)),
+        h48NetPerConfirm: mean(captured.map((r) => r.h48.net)),
+        h24Hit10: captured.filter((r) => r.h24.target10Before5).length,
+        meanDelayH: captured.length ? mean(captured.map((r) => r.delayH as number)) : null,
+      };
+      return [variant.name, { params: variant, h24, h48, matchedLift: lift, matchedDelta: delta, missedCohort }];
     }),
   );
 
@@ -965,6 +1034,7 @@ async function main(): Promise<void> {
     matchedComparisons: comparisons,
     matchedLift,
     robustness,
+    experiments,
     robustnessCoverage,
     bootstrap,
     walkForward,
@@ -1037,6 +1107,26 @@ async function main(): Promise<void> {
         `· 48h ${pc(x.h48.netPerEvent)}/${pc(x.h48.netPerCoin)} · worst lift ${liftText(worstLift)}`,
     );
   }
+  console.log('\nmissed-cohort experiment (research-only, NOT a promotion input):');
+  for (const [name, x] of Object.entries(experiments)) {
+    const worstLift = Math.min(
+      x.matchedLift.h24.all.lift, x.matchedLift.h24.confirmed.lift,
+      x.matchedLift.h48.all.lift, x.matchedLift.h48.confirmed.lift,
+    );
+    console.log(
+      `${name.padEnd(24)} alerts ${x.h48.alerts} · conf ${x.h48.confirms} (${pc(x.h48.confirmRate)}) · ` +
+        `24h event/coin ${pc(x.h24.netPerEvent)}/${pc(x.h24.netPerCoin)} · 48h ${pc(x.h48.netPerEvent)}/${pc(x.h48.netPerCoin)} · ` +
+        `PF24 ${liftText(x.h24.profitFactor)} · vs price-only worst lift ${liftText(worstLift)} ` +
+        `(Δevent 24h ${pc(x.matchedDelta.h24.netDeltaPerEvent)})`,
+    );
+    const m = x.missedCohort;
+    console.log(
+      `  base-missed cohort: ${m.baseMissed} missed by frozen rules · captured ${m.captured} · ` +
+        `net/confirm 24h ${pc(m.h24NetPerConfirm)} / 48h ${pc(m.h48NetPerConfirm)} · ` +
+        `hit10 ${m.h24Hit10}/${m.captured} · mean delay ${m.meanDelayH == null ? '-' : `${m.meanDelayH.toFixed(1)}h`}`,
+    );
+  }
+
   console.log('\nanti-overfit evidence:');
   for (const horizon of ['h24', 'h48'] as const) {
     const b = bootstrap[horizon];

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { CoinLite } from '../src/types';
-import { collectExistingSignalShadowCandidates, collectSpotShadowCandidates } from './strategyShadowFile';
+import type { HourlyMarketStore } from './hourlyMarketFile';
+import { collectExistingSignalShadowCandidates, collectRemediatedSignalShadowCandidates, collectSpotShadowCandidates } from './strategyShadowFile';
 
 const base: CoinLite = {
   symbol: 'TEST', regime: 'accumulate', strength: 70, change1h: 1, change24h: 3,
@@ -26,5 +27,34 @@ assert.equal(collectSpotShadowCandidates([{ ...base, feat: { ...base.feat!, spot
 
 const shipped = collectExistingSignalShadowCandidates([{ ...base, flushBreakout: true, rebuildBreakout: true, virginBreakout: true }], decisionTs);
 assert.deepEqual(shipped.map((x) => x.strategyId), ['virgin-v2', 'rebuild-r1', 'flush-breakout']);
+
+const firstHour = Date.UTC(2026, 6, 20, 0) / 1000;
+const closes = Array.from({ length: 25 }, (_, i) => i === 24 ? 122 : 100 + i);
+const hourly = {
+  candles: closes.map((close, i) => ({ time: firstHour + i * 3600, open: i === 24 ? 123 : close - 0.2, high: close + 0.5, low: close - 0.5, close })),
+  volume: closes.map((_, i) => ({ time: firstHour + i * 3600, value: 100 + i, takerBuy: 55 + i / 10 })),
+};
+const store = { get: () => hourly } as unknown as HourlyMarketStore;
+const remediationCoin: CoinLite = { ...base, oiQty4h: 2, funding: 0 };
+const remediationDecision = (hourly.candles.at(-1)!.time + 3600) * 1000;
+const remediated = collectRemediatedSignalShadowCandidates(
+  store,
+  remediationCoin,
+  [1, 0, 0, 0],
+  [0, 1, 0],
+  1,
+  remediationDecision + 5 * 60_000,
+);
+assert.deepEqual(remediated.map((x) => [x.strategyId, x.side]), [
+  ['top-t1-reversal-v2', 'short'],
+  ['wbottom-w2-uncrowded-v2', 'long'],
+]);
+assert.equal(remediated[0].decisionTs, remediationDecision, 'candidate is anchored to the completed UTC hour');
+assert.equal(collectRemediatedSignalShadowCandidates(store, remediationCoin, [1, 0, 0, 0], [0, 1, 0], 1, remediationDecision + 16 * 60_000).length, 0, 'partial-hour/backfill guard');
+assert.deepEqual(
+  collectRemediatedSignalShadowCandidates(store, remediationCoin, [1, 0, 0, 0], [0, 1, 0], null, remediationDecision + 5 * 60_000).map((x) => x.strategyId),
+  ['top-t1-reversal-v2'],
+  'W2 fails closed without the as-of BTC return while T1 does not invent a dependency',
+);
 
 console.log('strategy-shadow tests passed');

@@ -6,6 +6,7 @@ import type { CoinLite, ExitPlan } from '../src/types';
 import { readKvFile, writeKvKey } from './kvFile';
 import {
   buildSignalCard,
+  buildSignalChartOptions,
   CLASS_FB,
   CLASS_REBUILD,
   notifyClassEdges,
@@ -65,6 +66,8 @@ const rich: NotifyRich = {
   insights: [],
   entryWatch: { support: 100, atr: 10 },
 };
+const TEST_REBUILD = { ...CLASS_REBUILD, enabled: true };
+const TEST_FB = { ...CLASS_FB, enabled: true };
 
 function tempLocal(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'yaobi-notify-entry-'));
@@ -114,11 +117,45 @@ await test('Telegram success without message id/date is not accepted as delivery
   }
 });
 
-await test('disabled/unpromoted card never claims the 24h watcher is active', () => {
+await test('first-stage card is causal and never claims a historical plan level was an entry', () => {
   const card = buildSignalCard(coin, rich, CLASS_REBUILD, false);
   assert.doesNotMatch(card, /已開啟24h監察/);
-  assert.doesNotMatch(card, /結構入場區/);
-  assert.match(card, /原計劃參考位/);
+  assert.doesNotMatch(card, /原計劃參考位|TP1|硬SL/);
+  assert.match(card, /通知價 110/);
+  assert.match(card, /尚未入場／未成交/);
+  assert.match(card, /候選回踩觀察區/);
+  assert.match(card, /只計TG通知後/);
+  assert.match(card, /未確認前不是入場/);
+});
+
+await test('signal chart marks only the alert price and never the historical plan.entry', () => {
+  const opts = buildSignalChartOptions(coin, rich, CLASS_REBUILD);
+  assert.equal(opts.alertPrice, coin.lastPrice);
+  assert.equal(opts.lastPrice, coin.lastPrice);
+  assert.equal(opts.watchLow, 95);
+  assert.equal(opts.watchHigh, 105);
+  assert.equal('entry' in opts, false);
+  assert.notEqual(opts.alertPrice, plan.entry);
+});
+
+await test('H1 production classes preserve detector state but emit no Telegram or watch', async () => {
+  const prior = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    throw new Error('retired class must not fetch');
+  }) as typeof fetch;
+  try {
+    assert.equal(CLASS_FB.enabled, false);
+    assert.equal(CLASS_REBUILD.enabled, false);
+    const result = await notifyClassEdges([coin], new Set(), new Map([[coin.symbol, rich]]), CLASS_REBUILD);
+    assert.deepEqual([...result.current], ['TEST'], 'raw detector state stays available for shadow evidence');
+    assert.equal(result.delivered.length, 0);
+    assert.equal(result.watchable.length, 0);
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = prior;
+  }
 });
 
 await test('successful first Telegram writes v3 provenance, consumes cooldown, and separates delivered/watchable', async () => {
@@ -134,7 +171,7 @@ await test('successful first Telegram writes v3 provenance, consumes cooldown, a
       [coin],
       new Set(),
       new Map([[coin.symbol, rich]]),
-      CLASS_REBUILD,
+      TEST_REBUILD,
     );
     assert.deepEqual([...result.current], ['TEST']);
     assert.equal(result.delivered.length, 1);
@@ -162,7 +199,7 @@ await test('successful first Telegram writes v3 provenance, consumes cooldown, a
       [coin],
       result.current,
       new Map([[coin.symbol, rich]]),
-      CLASS_REBUILD,
+      TEST_REBUILD,
     );
     assert.equal(calls, before, 'successful persistent signal is cooldown-suppressed');
     assert.equal(second.delivered.length, 0);
@@ -186,13 +223,13 @@ await test('known Telegram failure consumes no cooldown and retries despite a pe
       [coin],
       new Set(),
       new Map([[coin.symbol, rich]]),
-      CLASS_REBUILD,
+      TEST_REBUILD,
     );
     assert.equal(first.delivered.length, 0);
     assert.equal(first.watchable.length, 0);
     assert.equal((readKvFile()['rb-notified-headless'] as Record<string, number> | undefined)?.TEST, undefined);
     const afterFirst = calls;
-    await notifyClassEdges([coin], first.current, new Map([[coin.symbol, rich]]), CLASS_REBUILD);
+    await notifyClassEdges([coin], first.current, new Map([[coin.symbol, rich]]), TEST_REBUILD);
     assert.ok(calls > afterFirst, 'persistent detector must retry when the prior delivery failed');
   } finally {
     globalThis.fetch = prior;
@@ -211,7 +248,7 @@ await test('confirmed delivery still yields the watch when the audit directory i
       [coin],
       new Set(),
       new Map([[coin.symbol, rich]]),
-      CLASS_REBUILD,
+      TEST_REBUILD,
     );
     assert.equal(result.delivered.length, 1);
     assert.equal(result.watchable.length, 1);
@@ -232,7 +269,7 @@ await test('successful ⚡ card creates an anchored App-only shadow watch', asyn
       [fbCoin],
       new Set(),
       new Map([[fbCoin.symbol, rich]]),
-      CLASS_FB,
+      TEST_FB,
     );
     assert.equal(result.delivered.length, 1);
     assert.equal(result.delivered[0].cls, 'fb');

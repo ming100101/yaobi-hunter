@@ -100,3 +100,9 @@ Setup 單獨落敗完全符合 pre-registration 預期(⚡ 先例 quiet-setup ×
 - D3 嘅 ATR 用 1H bar 計就好,唔好額外 fetch 5m 歷史(backtest-data cache 冇)。
 - 免費 API 約束照舊:全部指標由已有 K 線衍生,零新 endpoint。
 - 強度公式唔郁(E5 嘅事);squeeze 讀數 tone 最多 info/bull p6-7,唔准僭越 ⚡。
+
+## 2026-07-21 H1 evidence update
+
+D3 用完整逐月 archive universe 重跑 19,213 events / 682 coins / 181 days：10%×24h matched lift ×0.87、net −0.21%、1/6 positive folds、bootstrap L95 −0.56%，分類 `historical-fail`。舊單窗 ship 結論保留作歷史紀錄；唔再以等待 recordings 描述 D3，但今次冇自動改 live badge／通知。D2 原有 robustness failure 不由本輪結果改寫。
+
+用戶其後拍板：D3 detail insight OFF；`squeezeSignals` setup／breakout flags 繼續 recording，公式同 schema 不變。

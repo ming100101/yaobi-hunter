@@ -60,3 +60,9 @@ CAP 覆盤證實嘅訊號集空隙:「flush → OI 重建 → 先突破」。⚡
 - 唔准因為 CAP 亮唔亮加減分 — 單一樣本係假說唔係評分表。
 - oi4h 用 harness aligned rubik OI;live mirror 跟 interpret NaN fail-closed 規則(oiTrusted false ⇒ 全部 OI-gated 條件 false)。
 - 突破 24h 高 = 必然喺區間頂,唔准加 pos24 cap(同 S7 相反 — 呢個 family 本質係突破追認,anti-vertical 由 ret4h cap 負責)。
+
+## 2026-07-21 H1 evidence update
+
+R1／R2／R3 全部 `historical-fail`。10%×24h matched lift 分別 ×1.31／×0.99／×1.26，但 net 分別 −0.47%／−0.34%／−0.46%，positive monthly folds 只有 2/6／1/6／1/6，bootstrap 下界全負。R2/R3 唔再寫成收集中；R1 舊 ship 結論保留作歷史紀錄，而 live 是否退休留待用戶決定。
+
+用戶其後拍板退休 live surface：「增」badge、detail insight 同 `rb` Telegram OFF；raw R1 flag、三個 def recording 同 Strategy Lab shadow 照行。

@@ -1,0 +1,3202 @@
+{
+  "auditId": "historical-evidence-audit-2026-h1",
+  "boundaries": [
+    "歷史 Strategy replay 同 forward Strategy Lab 分開。",
+    "T1「一個月正 paper P&L」不可由 backtest 代替。",
+    "Telegram delivery、Top-1 runtime selection、cooldown、uptime、paper account、真實 slippage 只可用 forward evidence。",
+    "本工具唔會改 live badge、Telegram、paper entry rule 或 signal tier。"
+  ],
+  "coverage": {
+    "byDataset": {
+      "funding": {
+        "complete": 5985,
+        "invalid": 0,
+        "missing": 1477,
+        "partial": 2133
+      },
+      "futures5m": {
+        "complete": 5407,
+        "invalid": 0,
+        "missing": 683,
+        "partial": 2
+      },
+      "metrics": {
+        "complete": 4449,
+        "invalid": 0,
+        "missing": 1022,
+        "partial": 3992
+      },
+      "spot5m": {
+        "complete": 3108,
+        "invalid": 0,
+        "missing": 355,
+        "partial": 0
+      }
+    },
+    "complete": 18949,
+    "invalid": 0,
+    "missing": 3537,
+    "partial": 6127
+  },
+  "items": [
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "flush-breakout",
+      "label": "⚡ 縮倉突破",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "flush-breakout"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "early-setup",
+      "label": "蓄 早期累積 setup",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "early-setup"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "squeeze-d3",
+      "label": "D3 squeeze breakout",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "squeeze-d3"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "boarding-b2",
+      "label": "B2 EMA20 reclaim",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "boarding-b2"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "rebuild-r1",
+      "label": "R1 增倉突破",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "rebuild-r1"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "rebuild-r2",
+      "label": "R2 淨增倉",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "rebuild-r2"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "rebuild-r3",
+      "label": "R3 funding-cap rebuild",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "rebuild-r3"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "virgin-v1",
+      "label": "V1 處女擴張",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "virgin-v1"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "virgin-v2",
+      "label": "V2 處女增倉突破",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "virgin-v2"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "virgin-v3",
+      "label": "V3 funding-cap virgin",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "virgin-v3"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "top-t1",
+      "label": "S10 T1 雙頂拒絕",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "top-t1"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "top-t2",
+      "label": "S10 T2 新高背離",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "top-t2"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "top-t3",
+      "label": "S10 T3 climax rejection",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "top-t3"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "top-t4",
+      "label": "S10 T4 funding stall",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "top-t4"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "wbottom-w1",
+      "label": "S11 W1 雙底",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "wbottom-w1"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "wbottom-w2",
+      "label": "S11 W2 spring",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "wbottom-w2"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "wbottom-w3",
+      "label": "S11 W3 OI-confirmed",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "wbottom-w3"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "early-pump",
+      "label": "S14 early pump",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "early-pump"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "spot-pump",
+      "label": "Spot pump",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "spot-pump"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "spot-accum",
+      "label": "Spot accumulation",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "spot-accum"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-pass",
+      "key": "organic-spot",
+      "label": "Organic spot proxy",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "候選覆核（不自動升級）",
+      "remainingForwardEvidence": "市場漂移及連續月份仍可用 forward holdout 覆核；不可自動升 live",
+      "resultKey": "organic-spot"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "leverage-froth",
+      "label": "Leverage froth control",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "leverage-froth"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-pass",
+      "key": "true-spot-led",
+      "label": "True spot-led",
+      "oldBlocker": "舊文標作 recording-only、等待 E1 或歷史窗不足",
+      "recommendation": "候選覆核（不自動升級）",
+      "remainingForwardEvidence": "市場漂移及連續月份仍可用 forward holdout 覆核；不可自動升 live",
+      "resultKey": "true-spot-led"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "umm-ema-control",
+      "label": "UMM EMA20 reclaim control",
+      "oldBlocker": "舊 UMM replay 只有部分月份與 OI coverage，標作 sample-starved",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "umm-ema-control"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "umm-b2",
+      "label": "UMM B2",
+      "oldBlocker": "舊 UMM replay 只有部分月份與 OI coverage，標作 sample-starved",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "umm-b2"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "umm-b2-oi",
+      "label": "UMM B2 quantity-OI challenger",
+      "oldBlocker": "舊 UMM replay 只有部分月份與 OI coverage，標作 sample-starved",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "umm-b2-oi"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "deep-reclaim-armed",
+      "label": "S15 deep reclaim quantity-OI armed",
+      "oldBlocker": "舊結論指 quantity-OI 無法歷史 backfill，只得一個月，需等 forward recordings",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "deep-reclaim-armed"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "deep-reclaim-confirmed",
+      "label": "S15 deep reclaim confirmed",
+      "oldBlocker": "舊結論指 quantity-OI 無法歷史 backfill，只得一個月，需等 forward recordings",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "deep-reclaim-confirmed"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "entry-watch-r1",
+      "label": "Entry-watch R1 breakout retest",
+      "oldBlocker": "舊 study 只有 2026-06 execution month，calendar folds / bootstrap 不可用",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "entry-watch-r1"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "entry-watch-v2",
+      "label": "Entry-watch V2 breakout retest",
+      "oldBlocker": "舊 study 只有 2026-06 execution month，calendar folds / bootstrap 不可用",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "entry-watch-v2"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "strength70",
+      "label": "Strength ≥70 crossing",
+      "oldBlocker": "舊 recording state 樣本及 span 太短，未可行動",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "strength70"
+    },
+    {
+      "canBackfill": true,
+      "capability": "historical-fail",
+      "key": "top10",
+      "label": "全市場 Top 10 entry",
+      "oldBlocker": "舊 recording state 樣本及 span 太短，未可行動",
+      "recommendation": "退休／停止寫成「收集中」",
+      "remainingForwardEvidence": "歷史 gate 已足以否決目前固定規則；如改規則必須另作預註冊研究",
+      "resultKey": "top10"
+    },
+    {
+      "canBackfill": false,
+      "capability": "forward-only",
+      "key": "telegram-delivery",
+      "label": "Telegram 實際送達",
+      "oldBlocker": "送達只會喺真實時間發生",
+      "recommendation": "保留 forward audit，歷史 replay 不計送達",
+      "remainingForwardEvidence": "message id、API response、用戶端收件"
+    },
+    {
+      "canBackfill": false,
+      "capability": "forward-only",
+      "key": "top1-runtime-selection",
+      "label": "Top-1 runtime selection",
+      "oldBlocker": "同 sweep 候選、排序及發送狀態屬 runtime",
+      "recommendation": "保留 forward-only",
+      "remainingForwardEvidence": "完整同輪候選及實際 selected row"
+    },
+    {
+      "canBackfill": false,
+      "capability": "forward-only",
+      "key": "runtime-cooldown",
+      "label": "通知 cooldown",
+      "oldBlocker": "依賴持久化狀態及 process lifecycle",
+      "recommendation": "保留 forward-only",
+      "remainingForwardEvidence": "跨 restart runtime audit"
+    },
+    {
+      "canBackfill": false,
+      "capability": "forward-only",
+      "key": "recorder-uptime",
+      "label": "Recorder uptime",
+      "oldBlocker": "歷史市場資料不能證明 recorder 當時在線",
+      "recommendation": "保留 forward-only",
+      "remainingForwardEvidence": "heartbeat / process telemetry"
+    },
+    {
+      "canBackfill": false,
+      "capability": "forward-only",
+      "key": "paper-account",
+      "label": "Paper account / T1 一個月正 P&L",
+      "oldBlocker": "實際 paper book 路徑不可由 replay 冒充",
+      "recommendation": "維持 Strategy Lab 分隔",
+      "remainingForwardEvidence": "連續一個月同規則 paper P&L"
+    },
+    {
+      "canBackfill": false,
+      "capability": "forward-only",
+      "key": "real-slippage",
+      "label": "真實 slippage",
+      "oldBlocker": "archive 無本系統實際下單及成交",
+      "recommendation": "保留 forward-only",
+      "remainingForwardEvidence": "真實成交或 paper execution telemetry"
+    },
+    {
+      "canBackfill": true,
+      "capability": "forward-confirmation-required",
+      "key": "e2-forward-holdout",
+      "label": "E2 連續月份／市場漂移確認",
+      "oldBlocker": "歷史 H1 可做固定初步 gate，但不能證明部署後市場無漂移",
+      "recommendation": "歷史 pass 只列候選，等 forward confirmation",
+      "remainingForwardEvidence": "同規則 live-era 連續月份 holdout"
+    },
+    {
+      "canBackfill": false,
+      "capability": "source-unavailable",
+      "key": "liquidations",
+      "label": "Liquidation detector",
+      "oldBlocker": "Binance Vision 無 liquidation archive",
+      "recommendation": "保留收集；不可零值補齊",
+      "remainingForwardEvidence": "前向 websocket liquidation stream"
+    },
+    {
+      "canBackfill": false,
+      "capability": "manual-external",
+      "key": "e4-protected-source",
+      "label": "E4 protected Telegram reference",
+      "oldBlocker": "受保護外部來源不可由市場 archive 還原",
+      "recommendation": "維持 manual-external",
+      "remainingForwardEvidence": "人手保存原訊號及 timestamp"
+    },
+    {
+      "canBackfill": true,
+      "capability": "superseded",
+      "key": "vision-history-claim",
+      "label": "「Binance 只有 30 日歷史」舊結論",
+      "oldBlocker": "舊文件混淆 REST retention 同 Vision archive",
+      "recommendation": "保留舊文並加 superseded note",
+      "remainingForwardEvidence": "無"
+    }
+  ],
+  "months": [
+    "2026-01",
+    "2026-02",
+    "2026-03",
+    "2026-04",
+    "2026-05",
+    "2026-06"
+  ],
+  "results": [
+    {
+      "bootstrapLower95": -0.015393419085772492,
+      "capability": "historical-fail",
+      "coins": 485,
+      "coverage": 0.848545910789333,
+      "days": 171,
+      "events": 1115,
+      "horizons": [
+        {
+          "baselineRate": 0.16757143458317553,
+          "complete": 1115,
+          "events": 1115,
+          "hitRate": 0.1031390134529148,
+          "horizonH": 24,
+          "lift": 0.6154928118236098,
+          "meanReturn": -0.006882672069036881,
+          "medianReturn": -0.010376687988628341,
+          "netAfterCost": -0.009686632562310423,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.24357193956991963,
+          "complete": 1115,
+          "events": 1115,
+          "hitRate": 0.17668161434977578,
+          "horizonH": 48,
+          "lift": 0.7253775400472913,
+          "meanReturn": -0.010786792307365636,
+          "medianReturn": -0.013724121888811336,
+          "netAfterCost": -0.013442164863419441,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.09561082354921517,
+          "complete": 1115,
+          "events": 1115,
+          "hitRate": 0.05291479820627803,
+          "horizonH": 24,
+          "lift": 0.5534394145139897,
+          "meanReturn": -0.006882672069036881,
+          "medianReturn": -0.010376687988628341,
+          "netAfterCost": -0.009686632562310423,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.1465303202457602,
+          "complete": 1115,
+          "events": 1115,
+          "hitRate": 0.08609865470852018,
+          "horizonH": 48,
+          "lift": 0.5875825191954523,
+          "meanReturn": -0.010786792307365636,
+          "medianReturn": -0.013724121888811336,
+          "netAfterCost": -0.013442164863419441,
+          "targetPct": 15
+        }
+      ],
+      "key": "flush-breakout",
+      "label": "⚡ 縮倉突破",
+      "monthlyNet": {
+        "2026-01": -0.01531092371713868,
+        "2026-02": -0.010383732593542761,
+        "2026-03": -0.00818393883725967,
+        "2026-04": -0.0023826090286660348,
+        "2026-05": -0.01783001262650043,
+        "2026-06": -0.0035080875125213613
+      },
+      "months": 6,
+      "reasons": [
+        "1115 events / 485 coins / 171 days / 6 months",
+        "10%×24h matched lift 0.62",
+        "after-cost/funding mean -0.97%",
+        "0/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.5534394145139897
+      },
+      "topCoinProfitShare": 0.05800222400506286,
+      "topDayProfitShare": 0.08929003299219523,
+      "walkForwardPositive": 0,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.011493358650156596,
+      "capability": "historical-fail",
+      "coins": 565,
+      "coverage": 0.848545910789333,
+      "days": 179,
+      "events": 1617,
+      "horizons": [
+        {
+          "baselineRate": 0.07031301482701813,
+          "complete": 1617,
+          "events": 1617,
+          "hitRate": 0.09709338280766852,
+          "horizonH": 24,
+          "lift": 1.3808735558635143,
+          "meanReturn": -0.00475556721232123,
+          "medianReturn": -0.0076456630635380884,
+          "netAfterCost": -0.007593807459692911,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.1457660626029654,
+          "complete": 1617,
+          "events": 1617,
+          "hitRate": 0.16079158936301793,
+          "horizonH": 48,
+          "lift": 1.1030797326328197,
+          "meanReturn": -0.007318793151566353,
+          "medianReturn": -0.01060585054762242,
+          "netAfterCost": -0.010036365501597281,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.028336079077429983,
+          "complete": 1617,
+          "events": 1617,
+          "hitRate": 0.05009276437847866,
+          "horizonH": 24,
+          "lift": 1.7678086033567761,
+          "meanReturn": -0.00475556721232123,
+          "medianReturn": -0.0076456630635380884,
+          "netAfterCost": -0.007593807459692911,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.06675453047775948,
+          "complete": 1617,
+          "events": 1617,
+          "hitRate": 0.08101422387136673,
+          "horizonH": 48,
+          "lift": 1.2136138669772853,
+          "meanReturn": -0.007318793151566353,
+          "medianReturn": -0.01060585054762242,
+          "netAfterCost": -0.010036365501597281,
+          "targetPct": 15
+        }
+      ],
+      "key": "early-setup",
+      "label": "蓄 早期累積 setup",
+      "monthlyNet": {
+        "2026-01": -0.009885321178917448,
+        "2026-02": -0.009798318947134718,
+        "2026-03": -0.01021658305592168,
+        "2026-04": 0.0009041406831426327,
+        "2026-05": -0.009710341540131047,
+        "2026-06": -0.006344777893737486
+      },
+      "months": 6,
+      "reasons": [
+        "1617 events / 565 coins / 179 days / 6 months",
+        "10%×24h matched lift 1.38",
+        "after-cost/funding mean -0.76%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 1.1030797326328197
+      },
+      "topCoinProfitShare": 0.044307070176292054,
+      "topDayProfitShare": 0.062095118230055396,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.00559451334835359,
+      "capability": "historical-fail",
+      "coins": 682,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 19213,
+      "horizons": [
+        {
+          "baselineRate": 0.16757143458317553,
+          "complete": 19213,
+          "events": 19213,
+          "hitRate": 0.14578670691719148,
+          "horizonH": 24,
+          "lift": 0.8699973672710248,
+          "meanReturn": 0.0003579937544116407,
+          "medianReturn": -0.005110917790343672,
+          "netAfterCost": -0.0021092484576322994,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.24357193956991963,
+          "complete": 19213,
+          "events": 19213,
+          "hitRate": 0.2236506532035601,
+          "horizonH": 48,
+          "lift": 0.9182118991147544,
+          "meanReturn": 0.0001777423145807931,
+          "medianReturn": -0.006932409012131768,
+          "netAfterCost": -0.0018579327122239702,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.09561082354921517,
+          "complete": 19213,
+          "events": 19213,
+          "hitRate": 0.07848852339561756,
+          "horizonH": 24,
+          "lift": 0.8209167171875263,
+          "meanReturn": 0.0003579937544116407,
+          "medianReturn": -0.005110917790343672,
+          "netAfterCost": -0.0021092484576322994,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.1465303202457602,
+          "complete": 19213,
+          "events": 19213,
+          "hitRate": 0.1287669806901577,
+          "horizonH": 48,
+          "lift": 0.8787736249684716,
+          "meanReturn": 0.0001777423145807931,
+          "medianReturn": -0.006932409012131768,
+          "netAfterCost": -0.0018579327122239702,
+          "targetPct": 15
+        }
+      ],
+      "key": "squeeze-d3",
+      "label": "D3 squeeze breakout",
+      "monthlyNet": {
+        "2026-01": -0.009050340480600244,
+        "2026-02": -0.0016003481364369335,
+        "2026-03": -0.0006861329940913529,
+        "2026-04": 0.001429561695611524,
+        "2026-05": -0.0013893021705267082,
+        "2026-06": -0.0021385497433993976
+      },
+      "months": 6,
+      "reasons": [
+        "19213 events / 682 coins / 181 days / 6 months",
+        "10%×24h matched lift 0.87",
+        "after-cost/funding mean -0.21%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.8209167171875263
+      },
+      "topCoinProfitShare": 0.03652826838977044,
+      "topDayProfitShare": 0.07102589623554707,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.006448006498896225,
+      "capability": "historical-fail",
+      "coins": 560,
+      "coverage": 0.848545910789333,
+      "days": 173,
+      "events": 1570,
+      "horizons": [
+        {
+          "baselineRate": 0.10190422322775264,
+          "complete": 1570,
+          "events": 1570,
+          "hitRate": 0.11082802547770701,
+          "horizonH": 24,
+          "lift": 1.0875704849838261,
+          "meanReturn": 0.0016610567376149305,
+          "medianReturn": -0.0026025514807319627,
+          "netAfterCost": -0.0006686660904105503,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.1833521870286576,
+          "complete": 1570,
+          "events": 1570,
+          "hitRate": 0.20573248407643313,
+          "horizonH": 48,
+          "lift": 1.122061794901184,
+          "meanReturn": 0.002419617596923676,
+          "medianReturn": -0.0018140482899138832,
+          "netAfterCost": 0.0007639538771784421,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.049679487179487176,
+          "complete": 1570,
+          "events": 1570,
+          "hitRate": 0.04777070063694268,
+          "horizonH": 24,
+          "lift": 0.9615779741113624,
+          "meanReturn": 0.0016610567376149305,
+          "medianReturn": -0.0026025514807319627,
+          "netAfterCost": -0.0006686660904105503,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.09568250377073906,
+          "complete": 1570,
+          "events": 1570,
+          "hitRate": 0.10127388535031848,
+          "horizonH": 48,
+          "lift": 1.0584368234445107,
+          "meanReturn": 0.002419617596923676,
+          "medianReturn": -0.0018140482899138832,
+          "netAfterCost": 0.0007639538771784421,
+          "targetPct": 15
+        }
+      ],
+      "key": "boarding-b2",
+      "label": "B2 EMA20 reclaim",
+      "monthlyNet": {
+        "2026-01": -0.017850898710210627,
+        "2026-02": 0.0064678314485443434,
+        "2026-03": -0.0006472949408101781,
+        "2026-04": 0.014686654023831259,
+        "2026-05": -0.00821934981320126,
+        "2026-06": 0.006929195826594502
+      },
+      "months": 6,
+      "reasons": [
+        "1570 events / 560 coins / 173 days / 6 months",
+        "10%×24h matched lift 1.09",
+        "after-cost/funding mean -0.07%",
+        "3/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.9615779741113624
+      },
+      "topCoinProfitShare": 0.05963001853552709,
+      "topDayProfitShare": 0.16734817434493005,
+      "walkForwardPositive": 3,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.011290286104893514,
+      "capability": "historical-fail",
+      "coins": 534,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 1512,
+      "horizons": [
+        {
+          "baselineRate": 0.16757143458317553,
+          "complete": 1512,
+          "events": 1512,
+          "hitRate": 0.21891534391534392,
+          "horizonH": 24,
+          "lift": 1.3064001299498538,
+          "meanReturn": -0.0036022323132146195,
+          "medianReturn": -0.018848257913745503,
+          "netAfterCost": -0.004654557042050608,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.24357193956991963,
+          "complete": 1512,
+          "events": 1512,
+          "hitRate": 0.28835978835978837,
+          "horizonH": 48,
+          "lift": 1.1838793453340792,
+          "meanReturn": -0.009637336555764039,
+          "medianReturn": -0.019849949247400744,
+          "netAfterCost": -0.009193761377192605,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.09561082354921517,
+          "complete": 1512,
+          "events": 1512,
+          "hitRate": 0.1283068783068783,
+          "horizonH": 24,
+          "lift": 1.3419702241225129,
+          "meanReturn": -0.0036022323132146195,
+          "medianReturn": -0.018848257913745503,
+          "netAfterCost": -0.004654557042050608,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.1465303202457602,
+          "complete": 1512,
+          "events": 1512,
+          "hitRate": 0.1865079365079365,
+          "horizonH": 48,
+          "lift": 1.272828286972457,
+          "meanReturn": -0.009637336555764039,
+          "medianReturn": -0.019849949247400744,
+          "netAfterCost": -0.009193761377192605,
+          "targetPct": 15
+        }
+      ],
+      "key": "rebuild-r1",
+      "label": "R1 增倉突破",
+      "monthlyNet": {
+        "2026-01": -0.010821546489810522,
+        "2026-02": -0.01561484733847271,
+        "2026-03": -0.010554629883687714,
+        "2026-04": 0.008427099573073995,
+        "2026-05": -0.009514466090882995,
+        "2026-06": 0.0014488986945455581
+      },
+      "months": 6,
+      "reasons": [
+        "1512 events / 534 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.31",
+        "after-cost/funding mean -0.47%",
+        "2/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.1838793453340792
+      },
+      "topCoinProfitShare": 0.08039878774196116,
+      "topDayProfitShare": 0.0985326722845575,
+      "walkForwardPositive": 2,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.007452085537808322,
+      "capability": "historical-fail",
+      "coins": 648,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 5032,
+      "horizons": [
+        {
+          "baselineRate": 0.16757143458317553,
+          "complete": 5032,
+          "events": 5032,
+          "hitRate": 0.16573926868044514,
+          "horizonH": 24,
+          "lift": 0.9890663590289849,
+          "meanReturn": -0.0011473740770750302,
+          "medianReturn": -0.010182803116608685,
+          "netAfterCost": -0.003379149017456584,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.24357193956991963,
+          "complete": 5032,
+          "events": 5032,
+          "hitRate": 0.2384737678855326,
+          "horizonH": 48,
+          "lift": 0.9790691337705444,
+          "meanReturn": -0.0008409929232812931,
+          "medianReturn": -0.01235208030697843,
+          "netAfterCost": -0.0026726769673989332,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.09561082354921517,
+          "complete": 5032,
+          "events": 5032,
+          "hitRate": 0.09062003179650238,
+          "horizonH": 24,
+          "lift": 0.9478009751673794,
+          "meanReturn": -0.0011473740770750302,
+          "medianReturn": -0.010182803116608685,
+          "netAfterCost": -0.003379149017456584,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.1465303202457602,
+          "complete": 5032,
+          "events": 5032,
+          "hitRate": 0.1383147853736089,
+          "horizonH": 48,
+          "lift": 0.9439328675568834,
+          "meanReturn": -0.0008409929232812931,
+          "medianReturn": -0.01235208030697843,
+          "netAfterCost": -0.0026726769673989332,
+          "targetPct": 15
+        }
+      ],
+      "key": "rebuild-r2",
+      "label": "R2 淨增倉",
+      "monthlyNet": {
+        "2026-01": -0.0017166525123790887,
+        "2026-02": -0.009515477014450581,
+        "2026-03": -0.005609903208402635,
+        "2026-04": -0.0012204428713240003,
+        "2026-05": 0.0008913862428011571,
+        "2026-06": -0.00905176214925878
+      },
+      "months": 6,
+      "reasons": [
+        "5032 events / 648 coins / 181 days / 6 months",
+        "10%×24h matched lift 0.99",
+        "after-cost/funding mean -0.34%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.9439328675568834
+      },
+      "topCoinProfitShare": 0.04931013921213368,
+      "topDayProfitShare": 0.09081912856581899,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.011378195754870412,
+      "capability": "historical-fail",
+      "coins": 520,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 1416,
+      "horizons": [
+        {
+          "baselineRate": 0.16757143458317553,
+          "complete": 1416,
+          "events": 1416,
+          "hitRate": 0.211864406779661,
+          "horizonH": 24,
+          "lift": 1.2643229277511514,
+          "meanReturn": -0.003797380040803818,
+          "medianReturn": -0.018803984471945034,
+          "netAfterCost": -0.004563124525267097,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.24357193956991963,
+          "complete": 1416,
+          "events": 1416,
+          "hitRate": 0.2796610169491525,
+          "horizonH": 48,
+          "lift": 1.1481659892471858,
+          "meanReturn": -0.009134088123302481,
+          "medianReturn": -0.019404709463764602,
+          "netAfterCost": -0.008232509839404168,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.09561082354921517,
+          "complete": 1416,
+          "events": 1416,
+          "hitRate": 0.1193502824858757,
+          "horizonH": 24,
+          "lift": 1.248292589221771,
+          "meanReturn": -0.003797380040803818,
+          "medianReturn": -0.018803984471945034,
+          "netAfterCost": -0.004563124525267097,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.1465303202457602,
+          "complete": 1416,
+          "events": 1416,
+          "hitRate": 0.17584745762711865,
+          "horizonH": 48,
+          "lift": 1.2000755702450374,
+          "meanReturn": -0.009134088123302481,
+          "medianReturn": -0.019404709463764602,
+          "netAfterCost": -0.008232509839404168,
+          "targetPct": 15
+        }
+      ],
+      "key": "rebuild-r3",
+      "label": "R3 funding-cap rebuild",
+      "monthlyNet": {
+        "2026-01": -0.011579757324296077,
+        "2026-02": -0.01253095089068184,
+        "2026-03": -0.010038416113132576,
+        "2026-04": 0.009174728748369058,
+        "2026-05": -0.00652104235028594,
+        "2026-06": -0.004613166598526663
+      },
+      "months": 6,
+      "reasons": [
+        "1416 events / 520 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.26",
+        "after-cost/funding mean -0.46%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 1.1481659892471858
+      },
+      "topCoinProfitShare": 0.08244588390752061,
+      "topDayProfitShare": 0.10213878680775519,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.00874632353559357,
+      "capability": "historical-fail",
+      "coins": 664,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 7495,
+      "horizons": [
+        {
+          "baselineRate": 0.16757143458317553,
+          "complete": 7495,
+          "events": 7495,
+          "hitRate": 0.2587058038692462,
+          "horizonH": 24,
+          "lift": 1.5438538466461318,
+          "meanReturn": -0.004047440827919406,
+          "medianReturn": -0.0160019694731659,
+          "netAfterCost": -0.00486759309076129,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.24357193956991963,
+          "complete": 7495,
+          "events": 7495,
+          "hitRate": 0.33288859239492996,
+          "horizonH": 48,
+          "lift": 1.3666951660471183,
+          "meanReturn": -0.0049438228304178305,
+          "medianReturn": -0.021759259259259367,
+          "netAfterCost": -0.004809446843760045,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.09561082354921517,
+          "complete": 7495,
+          "events": 7495,
+          "hitRate": 0.16357571714476318,
+          "horizonH": 24,
+          "lift": 1.7108493690629434,
+          "meanReturn": -0.004047440827919406,
+          "medianReturn": -0.0160019694731659,
+          "netAfterCost": -0.00486759309076129,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.1465303202457602,
+          "complete": 7495,
+          "events": 7495,
+          "hitRate": 0.22214809873248834,
+          "horizonH": 48,
+          "lift": 1.516055505508363,
+          "meanReturn": -0.0049438228304178305,
+          "medianReturn": -0.021759259259259367,
+          "netAfterCost": -0.004809446843760045,
+          "targetPct": 15
+        }
+      ],
+      "key": "virgin-v1",
+      "label": "V1 處女擴張",
+      "monthlyNet": {
+        "2026-01": -0.006511982173838911,
+        "2026-02": -0.015907170312766034,
+        "2026-03": -0.006964737260791978,
+        "2026-04": 0.001404559708589479,
+        "2026-05": -0.00257286002017387,
+        "2026-06": -0.004862262972780044
+      },
+      "months": 6,
+      "reasons": [
+        "7495 events / 664 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.54",
+        "after-cost/funding mean -0.49%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.3666951660471183
+      },
+      "topCoinProfitShare": 0.03338834925096695,
+      "topDayProfitShare": 0.08377190092693362,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.00906093971141458,
+      "capability": "historical-fail",
+      "coins": 659,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 6824,
+      "horizons": [
+        {
+          "baselineRate": 0.16757143458317553,
+          "complete": 6824,
+          "events": 6824,
+          "hitRate": 0.2776963657678781,
+          "horizonH": 24,
+          "lift": 1.6571820039533116,
+          "meanReturn": -0.004493885813123976,
+          "medianReturn": -0.018086228335199683,
+          "netAfterCost": -0.005082988784987981,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.24357193956991963,
+          "complete": 6824,
+          "events": 6824,
+          "hitRate": 0.35096717467760846,
+          "horizonH": 48,
+          "lift": 1.4409179287947493,
+          "meanReturn": -0.005443116265022286,
+          "medianReturn": -0.024260299154687137,
+          "netAfterCost": -0.004981156358808936,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.09561082354921517,
+          "complete": 6824,
+          "events": 6824,
+          "hitRate": 0.17570339976553342,
+          "horizonH": 24,
+          "lift": 1.8376936129526278,
+          "meanReturn": -0.004493885813123976,
+          "medianReturn": -0.018086228335199683,
+          "netAfterCost": -0.005082988784987981,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.1465303202457602,
+          "complete": 6824,
+          "events": 6824,
+          "hitRate": 0.23622508792497068,
+          "horizonH": 48,
+          "lift": 1.6121242861462028,
+          "meanReturn": -0.005443116265022286,
+          "medianReturn": -0.024260299154687137,
+          "netAfterCost": -0.004981156358808936,
+          "targetPct": 15
+        }
+      ],
+      "key": "virgin-v2",
+      "label": "V2 處女增倉突破",
+      "monthlyNet": {
+        "2026-01": -0.007168995701138228,
+        "2026-02": -0.016059600467099238,
+        "2026-03": -0.007989215256799844,
+        "2026-04": 0.0016059711737585977,
+        "2026-05": -0.003171476319668322,
+        "2026-06": -0.0036970012222919692
+      },
+      "months": 6,
+      "reasons": [
+        "6824 events / 659 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.66",
+        "after-cost/funding mean -0.51%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.4409179287947493
+      },
+      "topCoinProfitShare": 0.03579262255601378,
+      "topDayProfitShare": 0.08612150360964921,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.009107534139005136,
+      "capability": "historical-fail",
+      "coins": 658,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 6886,
+      "horizons": [
+        {
+          "baselineRate": 0.16757143458317553,
+          "complete": 6886,
+          "events": 6886,
+          "hitRate": 0.2487656113854197,
+          "horizonH": 24,
+          "lift": 1.4845347120421215,
+          "meanReturn": -0.0047457030676794805,
+          "medianReturn": -0.015803279841186235,
+          "netAfterCost": -0.0051857296985246566,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.24357193956991963,
+          "complete": 6886,
+          "events": 6886,
+          "hitRate": 0.3218123729305838,
+          "horizonH": 48,
+          "lift": 1.3212210466395062,
+          "meanReturn": -0.005736068150568551,
+          "medianReturn": -0.021831112901767258,
+          "netAfterCost": -0.005032293404707397,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.09561082354921517,
+          "complete": 6886,
+          "events": 6886,
+          "hitRate": 0.15625907638687192,
+          "horizonH": 24,
+          "lift": 1.634324133882587,
+          "meanReturn": -0.0047457030676794805,
+          "medianReturn": -0.015803279841186235,
+          "netAfterCost": -0.0051857296985246566,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.1465303202457602,
+          "complete": 6886,
+          "events": 6886,
+          "hitRate": 0.2120243973279117,
+          "horizonH": 48,
+          "lift": 1.4469660406959122,
+          "meanReturn": -0.005736068150568551,
+          "medianReturn": -0.021831112901767258,
+          "netAfterCost": -0.005032293404707397,
+          "targetPct": 15
+        }
+      ],
+      "key": "virgin-v3",
+      "label": "V3 funding-cap virgin",
+      "monthlyNet": {
+        "2026-01": -0.006708922235048836,
+        "2026-02": -0.016313936261748294,
+        "2026-03": -0.005875103908825363,
+        "2026-04": 0.0008180825065373234,
+        "2026-05": -0.002952838185766878,
+        "2026-06": -0.005979797222712241
+      },
+      "months": 6,
+      "reasons": [
+        "6886 events / 658 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.48",
+        "after-cost/funding mean -0.52%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.3212210466395062
+      },
+      "topCoinProfitShare": 0.037467055629851094,
+      "topDayProfitShare": 0.08887136320105196,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.01732416092529916,
+      "capability": "historical-fail",
+      "coins": 86,
+      "coverage": 0.848545910789333,
+      "days": 88,
+      "events": 111,
+      "horizons": [
+        {
+          "baselineRate": 0.43078690407811604,
+          "complete": 111,
+          "events": 111,
+          "hitRate": 0.3783783783783784,
+          "horizonH": 24,
+          "lift": 0.8783423423423423,
+          "meanReturn": 0.01805897624649295,
+          "medianReturn": 0.024505588993981142,
+          "netAfterCost": 0.011357023093339797,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.5695002871912694,
+          "complete": 111,
+          "events": 111,
+          "hitRate": 0.5495495495495496,
+          "horizonH": 48,
+          "lift": 0.9649679937123204,
+          "meanReturn": 0.02791279788227037,
+          "medianReturn": 0.03640651485002566,
+          "netAfterCost": 0.01893293184623434,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.2205628948879954,
+          "complete": 111,
+          "events": 111,
+          "hitRate": 0.24324324324324326,
+          "horizonH": 24,
+          "lift": 1.1028293918918919,
+          "meanReturn": 0.01805897624649295,
+          "medianReturn": 0.024505588993981142,
+          "netAfterCost": 0.011357023093339797,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.34348075818495116,
+          "complete": 111,
+          "events": 111,
+          "hitRate": 0.32432432432432434,
+          "horizonH": 48,
+          "lift": 0.9442285094459009,
+          "meanReturn": 0.02791279788227037,
+          "medianReturn": 0.03640651485002566,
+          "netAfterCost": 0.01893293184623434,
+          "targetPct": 15
+        }
+      ],
+      "key": "top-t1",
+      "label": "S10 T1 雙頂拒絕",
+      "monthlyNet": {
+        "2026-01": 0.05298025462894996,
+        "2026-02": -0.03567365304150925,
+        "2026-03": 0.029046604762024263,
+        "2026-04": 0.06310731677997189,
+        "2026-05": -0.008364888188017162,
+        "2026-06": -0.017108437067537372
+      },
+      "months": 6,
+      "reasons": [
+        "111 events / 86 coins / 88 days / 6 months",
+        "10%×24h matched lift 0.88",
+        "after-cost/funding mean 1.14%",
+        "3/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.8783423423423423
+      },
+      "topCoinProfitShare": 0.08228619229643022,
+      "topDayProfitShare": 0.07857065633937109,
+      "walkForwardPositive": 3,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.016330170180444855,
+      "capability": "historical-fail",
+      "coins": 59,
+      "coverage": 0.848545910789333,
+      "days": 51,
+      "events": 69,
+      "horizons": [
+        {
+          "baselineRate": 0.43078690407811604,
+          "complete": 69,
+          "events": 69,
+          "hitRate": 0.5362318840579711,
+          "horizonH": 24,
+          "lift": 1.2447729468599034,
+          "meanReturn": 0.04003733161828625,
+          "medianReturn": 0.043196544276457804,
+          "netAfterCost": 0.025383592197996397,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.5695002871912694,
+          "complete": 69,
+          "events": 69,
+          "hitRate": 0.6811594202898551,
+          "horizonH": 48,
+          "lift": 1.196065104109569,
+          "meanReturn": 0.03585743282944092,
+          "medianReturn": 0.06985593911388976,
+          "netAfterCost": 0.010399627177267,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.2205628948879954,
+          "complete": 69,
+          "events": 69,
+          "hitRate": 0.34782608695652173,
+          "horizonH": 24,
+          "lift": 1.5769927536231882,
+          "meanReturn": 0.04003733161828625,
+          "medianReturn": 0.043196544276457804,
+          "netAfterCost": 0.025383592197996397,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.34348075818495116,
+          "complete": 69,
+          "events": 69,
+          "hitRate": 0.4782608695652174,
+          "horizonH": 48,
+          "lift": 1.392394939653919,
+          "meanReturn": 0.03585743282944092,
+          "medianReturn": 0.06985593911388976,
+          "netAfterCost": 0.010399627177267,
+          "targetPct": 15
+        }
+      ],
+      "key": "top-t2",
+      "label": "S10 T2 新高背離",
+      "monthlyNet": {
+        "2026-01": -0.05165658110281887,
+        "2026-02": 0.03953270568052879,
+        "2026-03": -0.09392461118590614,
+        "2026-04": 0.3247445320508098,
+        "2026-05": -0.016806473004273414,
+        "2026-06": 0.028442319178769663
+      },
+      "months": 6,
+      "reasons": [
+        "69 events / 59 coins / 51 days / 6 months",
+        "10%×24h matched lift 1.24",
+        "after-cost/funding mean 2.54%",
+        "3/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.196065104109569
+      },
+      "topCoinProfitShare": 0.14791025654341766,
+      "topDayProfitShare": 0.14958590033150043,
+      "walkForwardPositive": 3,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": 0.02047210024991385,
+      "capability": "historical-fail",
+      "coins": 22,
+      "coverage": 0.848545910789333,
+      "days": 22,
+      "events": 24,
+      "horizons": [
+        {
+          "baselineRate": 0.43078690407811604,
+          "complete": 24,
+          "events": 24,
+          "hitRate": 0.4166666666666667,
+          "horizonH": 24,
+          "lift": 0.9672222222222222,
+          "meanReturn": 0.07937555058128443,
+          "medianReturn": 0.05240455054734805,
+          "netAfterCost": 0.07406420266461776,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.5695002871912694,
+          "complete": 24,
+          "events": 24,
+          "hitRate": 0.5833333333333334,
+          "horizonH": 48,
+          "lift": 1.0242897966044713,
+          "meanReturn": 0.09377763451369259,
+          "medianReturn": 0.036341096026640374,
+          "netAfterCost": 0.08778344243035924,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.2205628948879954,
+          "complete": 24,
+          "events": 24,
+          "hitRate": 0.25,
+          "horizonH": 24,
+          "lift": 1.1334635416666667,
+          "meanReturn": 0.07937555058128443,
+          "medianReturn": 0.05240455054734805,
+          "netAfterCost": 0.07406420266461776,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.34348075818495116,
+          "complete": 24,
+          "events": 24,
+          "hitRate": 0.25,
+          "horizonH": 48,
+          "lift": 0.7278428093645485,
+          "meanReturn": 0.09377763451369259,
+          "medianReturn": 0.036341096026640374,
+          "netAfterCost": 0.08778344243035924,
+          "targetPct": 15
+        }
+      ],
+      "key": "top-t3",
+      "label": "S10 T3 climax rejection",
+      "monthlyNet": {
+        "2026-01": 0.061128773656727364,
+        "2026-02": 0.055992948696562295,
+        "2026-03": 0.10545062919097915,
+        "2026-04": 0.3279977498232606,
+        "2026-05": 0.003761547147056186,
+        "2026-06": 0.0416955897640569
+      },
+      "months": 6,
+      "reasons": [
+        "24 events / 22 coins / 22 days / 6 months",
+        "10%×24h matched lift 0.97",
+        "after-cost/funding mean 7.41%",
+        "6/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.7278428093645485
+      },
+      "topCoinProfitShare": 0.2512851497649323,
+      "topDayProfitShare": 0.24995196805208786,
+      "walkForwardPositive": 6,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.04300458875189745,
+      "capability": "historical-fail",
+      "coins": 36,
+      "coverage": 0.848545910789333,
+      "days": 37,
+      "events": 47,
+      "horizons": [
+        {
+          "baselineRate": 0.43078690407811604,
+          "complete": 47,
+          "events": 47,
+          "hitRate": 0.46808510638297873,
+          "horizonH": 24,
+          "lift": 1.086581560283688,
+          "meanReturn": 0.009120398215827125,
+          "medianReturn": 0.014214266912345397,
+          "netAfterCost": 0.008230147151997342,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.5695002871912694,
+          "complete": 47,
+          "events": 47,
+          "hitRate": 0.574468085106383,
+          "horizonH": 48,
+          "lift": 1.0087230823703608,
+          "meanReturn": 0.02134063342698226,
+          "medianReturn": 0.02935521688159437,
+          "netAfterCost": 0.021227223426982255,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.2205628948879954,
+          "complete": 47,
+          "events": 47,
+          "hitRate": 0.3191489361702128,
+          "horizonH": 24,
+          "lift": 1.4469747340425532,
+          "meanReturn": 0.009120398215827125,
+          "medianReturn": 0.014214266912345397,
+          "netAfterCost": 0.008230147151997342,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.34348075818495116,
+          "complete": 47,
+          "events": 47,
+          "hitRate": 0.3829787234042553,
+          "horizonH": 48,
+          "lift": 1.1149932398776063,
+          "meanReturn": 0.02134063342698226,
+          "medianReturn": 0.02935521688159437,
+          "netAfterCost": 0.021227223426982255,
+          "targetPct": 15
+        }
+      ],
+      "key": "top-t4",
+      "label": "S10 T4 funding stall",
+      "monthlyNet": {
+        "2026-01": 0.04852129126664612,
+        "2026-02": -0.033325328655075134,
+        "2026-03": -0.0070369717583102,
+        "2026-04": -0.1305632369813109,
+        "2026-05": 0.06175532484190785,
+        "2026-06": 0.051932797391478186
+      },
+      "months": 6,
+      "reasons": [
+        "47 events / 36 coins / 37 days / 6 months",
+        "10%×24h matched lift 1.09",
+        "after-cost/funding mean 0.82%",
+        "3/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 1.0087230823703608
+      },
+      "topCoinProfitShare": 0.18198868708005547,
+      "topDayProfitShare": 0.16464476910263054,
+      "walkForwardPositive": 3,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.009083807686874504,
+      "capability": "historical-fail",
+      "coins": 576,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 3798,
+      "horizons": [
+        {
+          "baselineRate": 0.31815058407774616,
+          "complete": 3798,
+          "events": 3798,
+          "hitRate": 0.3454449710373881,
+          "horizonH": 24,
+          "lift": 1.085790780610266,
+          "meanReturn": -0.004002356270286749,
+          "medianReturn": -0.026772532022493245,
+          "netAfterCost": -0.0037756905277907004,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.40296456267792286,
+          "complete": 3798,
+          "events": 3798,
+          "hitRate": 0.4225908372827804,
+          "horizonH": 48,
+          "lift": 1.0487047160535161,
+          "meanReturn": -0.007932414611567806,
+          "medianReturn": -0.035807150004909194,
+          "netAfterCost": -0.006141878658434567,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.21174045351919113,
+          "complete": 3798,
+          "events": 3798,
+          "hitRate": 0.22643496577145866,
+          "horizonH": 24,
+          "lift": 1.0693987001918634,
+          "meanReturn": -0.004002356270286749,
+          "medianReturn": -0.026772532022493245,
+          "netAfterCost": -0.0037756905277907004,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.2847747128693433,
+          "complete": 3798,
+          "events": 3798,
+          "hitRate": 0.29778830963665087,
+          "horizonH": 48,
+          "lift": 1.045697866345592,
+          "meanReturn": -0.007932414611567806,
+          "medianReturn": -0.035807150004909194,
+          "netAfterCost": -0.006141878658434567,
+          "targetPct": 15
+        }
+      ],
+      "key": "wbottom-w1",
+      "label": "S11 W1 雙底",
+      "monthlyNet": {
+        "2026-01": -0.010180888644451188,
+        "2026-02": -0.011635604539143654,
+        "2026-03": -0.013021977116427271,
+        "2026-04": 0.008521476593837668,
+        "2026-05": -0.00027004582646230485,
+        "2026-06": -0.0016817798806395075
+      },
+      "months": 6,
+      "reasons": [
+        "3798 events / 576 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.09",
+        "after-cost/funding mean -0.38%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 1.045697866345592
+      },
+      "topCoinProfitShare": 0.034477644823898826,
+      "topDayProfitShare": 0.06630497012125554,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.011845840177566425,
+      "capability": "historical-fail",
+      "coins": 420,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 1212,
+      "horizons": [
+        {
+          "baselineRate": 0.31815058407774616,
+          "complete": 1212,
+          "events": 1212,
+          "hitRate": 0.4034653465346535,
+          "horizonH": 24,
+          "lift": 1.2681584341710939,
+          "meanReturn": -0.0037321570141281213,
+          "medianReturn": -0.02539364979823311,
+          "netAfterCost": -0.0022489719398707014,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.40296456267792286,
+          "complete": 1212,
+          "events": 1212,
+          "hitRate": 0.4867986798679868,
+          "horizonH": 48,
+          "lift": 1.2080433987369503,
+          "meanReturn": -0.005864350523295324,
+          "medianReturn": -0.03636480456422947,
+          "netAfterCost": -0.002484216628905876,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.21174045351919113,
+          "complete": 1212,
+          "events": 1212,
+          "hitRate": 0.2722772277227723,
+          "horizonH": 24,
+          "lift": 1.2859008432136678,
+          "meanReturn": -0.0037321570141281213,
+          "medianReturn": -0.02539364979823311,
+          "netAfterCost": -0.0022489719398707014,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.2847747128693433,
+          "complete": 1212,
+          "events": 1212,
+          "hitRate": 0.3589108910891089,
+          "horizonH": 48,
+          "lift": 1.2603327292398319,
+          "meanReturn": -0.005864350523295324,
+          "medianReturn": -0.03636480456422947,
+          "netAfterCost": -0.002484216628905876,
+          "targetPct": 15
+        }
+      ],
+      "key": "wbottom-w2",
+      "label": "S11 W2 spring",
+      "monthlyNet": {
+        "2026-01": 0.0010049738579770008,
+        "2026-02": -0.002784459160984834,
+        "2026-03": -0.017846472507724677,
+        "2026-04": 0.0065259430954218685,
+        "2026-05": 0.0016068280472357657,
+        "2026-06": -0.005760026162297858
+      },
+      "months": 6,
+      "reasons": [
+        "1212 events / 420 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.27",
+        "after-cost/funding mean -0.22%",
+        "3/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.2080433987369503
+      },
+      "topCoinProfitShare": 0.07735111947385287,
+      "topDayProfitShare": 0.0605481423993711,
+      "walkForwardPositive": 3,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.008321044148262161,
+      "capability": "historical-fail",
+      "coins": 563,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 3368,
+      "horizons": [
+        {
+          "baselineRate": 0.31815058407774616,
+          "complete": 3368,
+          "events": 3368,
+          "hitRate": 0.34590261282660334,
+          "horizonH": 24,
+          "lift": 1.0872292245802555,
+          "meanReturn": -0.003388259135960434,
+          "medianReturn": -0.02784316216866356,
+          "netAfterCost": -0.003058119263632645,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.40296456267792286,
+          "complete": 3368,
+          "events": 3368,
+          "hitRate": 0.42220902612826605,
+          "horizonH": 48,
+          "lift": 1.0477572105161135,
+          "meanReturn": -0.0063088732075528295,
+          "medianReturn": -0.036850876377939545,
+          "netAfterCost": -0.0045153830590967505,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.21174045351919113,
+          "complete": 3368,
+          "events": 3368,
+          "hitRate": 0.22743467933491687,
+          "horizonH": 24,
+          "lift": 1.074120110516828,
+          "meanReturn": -0.003388259135960434,
+          "medianReturn": -0.02784316216866356,
+          "netAfterCost": -0.003058119263632645,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.2847747128693433,
+          "complete": 3368,
+          "events": 3368,
+          "hitRate": 0.2995843230403801,
+          "horizonH": 48,
+          "lift": 1.0520046531583425,
+          "meanReturn": -0.0063088732075528295,
+          "medianReturn": -0.036850876377939545,
+          "netAfterCost": -0.0045153830590967505,
+          "targetPct": 15
+        }
+      ],
+      "key": "wbottom-w3",
+      "label": "S11 W3 OI-confirmed",
+      "monthlyNet": {
+        "2026-01": -0.009547559706234889,
+        "2026-02": -0.008865346058935634,
+        "2026-03": -0.014412786677341681,
+        "2026-04": 0.012186830179139574,
+        "2026-05": -0.0031051054259823925,
+        "2026-06": -0.0013067867635638973
+      },
+      "months": 6,
+      "reasons": [
+        "3368 events / 563 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.09",
+        "after-cost/funding mean -0.31%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 1.0477572105161135
+      },
+      "topCoinProfitShare": 0.03530487607967823,
+      "topDayProfitShare": 0.066023434612767,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.0073919348900338844,
+      "capability": "historical-fail",
+      "coins": 619,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 5503,
+      "horizons": [
+        {
+          "baselineRate": 0.13950267927027515,
+          "complete": 5503,
+          "events": 5503,
+          "hitRate": 0.2418680719607487,
+          "horizonH": 24,
+          "lift": 1.7337880048321428,
+          "meanReturn": -0.0017249045691187287,
+          "medianReturn": -0.010948905109488871,
+          "netAfterCost": -0.0026111132262148606,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.22568085576093283,
+          "complete": 5503,
+          "events": 5503,
+          "hitRate": 0.3196438306378339,
+          "horizonH": 48,
+          "lift": 1.4163533258507204,
+          "meanReturn": -0.002952547649928425,
+          "medianReturn": -0.017576432726822633,
+          "netAfterCost": -0.002792987597229893,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.07375519296766814,
+          "complete": 5503,
+          "events": 5503,
+          "hitRate": 0.14719244048700708,
+          "horizonH": 24,
+          "lift": 1.9956891788152658,
+          "meanReturn": -0.0017249045691187287,
+          "medianReturn": -0.010948905109488871,
+          "netAfterCost": -0.0026111132262148606,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.12950809801914626,
+          "complete": 5503,
+          "events": 5503,
+          "hitRate": 0.21152098855169907,
+          "horizonH": 48,
+          "lift": 1.6332645740842258,
+          "meanReturn": -0.002952547649928425,
+          "medianReturn": -0.017576432726822633,
+          "netAfterCost": -0.002792987597229893,
+          "targetPct": 15
+        }
+      ],
+      "key": "early-pump",
+      "label": "S14 early pump",
+      "monthlyNet": {
+        "2026-01": -0.012466986748856565,
+        "2026-02": -0.013423971059667819,
+        "2026-03": -0.007378402208457974,
+        "2026-04": 0.01816128511524581,
+        "2026-05": -0.0004927835816239275,
+        "2026-06": -0.0007593681571366286
+      },
+      "months": 6,
+      "reasons": [
+        "5503 events / 619 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.73",
+        "after-cost/funding mean -0.26%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.4163533258507204
+      },
+      "topCoinProfitShare": 0.0365358504169352,
+      "topDayProfitShare": 0.07489874265573827,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.00876562277746665,
+      "capability": "historical-fail",
+      "coins": 391,
+      "coverage": 0.5671330549195821,
+      "days": 181,
+      "events": 6552,
+      "horizons": [
+        {
+          "baselineRate": 0.11227532395151177,
+          "complete": 6552,
+          "events": 6552,
+          "hitRate": 0.13507326007326007,
+          "horizonH": 24,
+          "lift": 1.2030538440627794,
+          "meanReturn": -0.002870994189978072,
+          "medianReturn": -0.007887722736768688,
+          "netAfterCost": -0.005143856949440818,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.18166364776368957,
+          "complete": 6552,
+          "events": 6552,
+          "hitRate": 0.20512820512820512,
+          "horizonH": 48,
+          "lift": 1.1291648475265594,
+          "meanReturn": -0.004315509755269651,
+          "medianReturn": -0.009542829603436331,
+          "netAfterCost": -0.005976555562656699,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.05378291765361572,
+          "complete": 6552,
+          "events": 6552,
+          "hitRate": 0.06425518925518925,
+          "horizonH": 24,
+          "lift": 1.1947137131722623,
+          "meanReturn": -0.002870994189978072,
+          "medianReturn": -0.007887722736768688,
+          "netAfterCost": -0.005143856949440818,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.09399470530862478,
+          "complete": 6552,
+          "events": 6552,
+          "hitRate": 0.10790598290598291,
+          "horizonH": 48,
+          "lift": 1.148000651224784,
+          "meanReturn": -0.004315509755269651,
+          "medianReturn": -0.009542829603436331,
+          "netAfterCost": -0.005976555562656699,
+          "targetPct": 15
+        }
+      ],
+      "key": "spot-pump",
+      "label": "Spot pump",
+      "monthlyNet": {
+        "2026-01": -0.009069492308865492,
+        "2026-02": -0.0038387346227690636,
+        "2026-03": -0.003094569834332228,
+        "2026-04": 0.0022340136215496776,
+        "2026-05": -0.0104200506159052,
+        "2026-06": -0.0072056979028378215
+      },
+      "months": 6,
+      "reasons": [
+        "6552 events / 391 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.20",
+        "after-cost/funding mean -0.51%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 1.1291648475265594
+      },
+      "topCoinProfitShare": 0.07563984035960657,
+      "topDayProfitShare": 0.06635171641221427,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.0068741088112051745,
+      "capability": "historical-fail",
+      "coins": 369,
+      "coverage": 0.5671330549195821,
+      "days": 181,
+      "events": 2900,
+      "horizons": [
+        {
+          "baselineRate": 0.07404054750050723,
+          "complete": 2900,
+          "events": 2900,
+          "hitRate": 0.0703448275862069,
+          "horizonH": 24,
+          "lift": 0.9500851892771996,
+          "meanReturn": -0.0003131859823992214,
+          "medianReturn": -0.0033486005396314855,
+          "netAfterCost": -0.003091039585847514,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.14361743636165,
+          "complete": 2900,
+          "events": 2900,
+          "hitRate": 0.13448275862068965,
+          "horizonH": 48,
+          "lift": 0.9363957610414526,
+          "meanReturn": -0.001760814580234332,
+          "medianReturn": -0.005047898398841233,
+          "netAfterCost": -0.004113412104372254,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.03218204235793548,
+          "complete": 2900,
+          "events": 2900,
+          "hitRate": 0.03,
+          "horizonH": 24,
+          "lift": 0.9321968962172648,
+          "meanReturn": -0.0003131859823992214,
+          "medianReturn": -0.0033486005396314855,
+          "netAfterCost": -0.003091039585847514,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.06773523949245391,
+          "complete": 2900,
+          "events": 2900,
+          "hitRate": 0.06586206896551725,
+          "horizonH": 48,
+          "lift": 0.9723457015731767,
+          "meanReturn": -0.001760814580234332,
+          "medianReturn": -0.005047898398841233,
+          "netAfterCost": -0.004113412104372254,
+          "targetPct": 15
+        }
+      ],
+      "key": "spot-accum",
+      "label": "Spot accumulation",
+      "monthlyNet": {
+        "2026-01": -0.001951483168029114,
+        "2026-02": -0.008296590772786086,
+        "2026-03": -0.0030828198936018363,
+        "2026-04": 0.0028802534391558546,
+        "2026-05": 0.0010294931979894088,
+        "2026-06": -0.011705143645778947
+      },
+      "months": 6,
+      "reasons": [
+        "2900 events / 369 coins / 181 days / 6 months",
+        "10%×24h matched lift 0.95",
+        "after-cost/funding mean -0.31%",
+        "2/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.9321968962172648
+      },
+      "topCoinProfitShare": 0.08199365323742022,
+      "topDayProfitShare": 0.08455613516534943,
+      "walkForwardPositive": 2,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.007329312840765691,
+      "capability": "historical-pass",
+      "coins": 16,
+      "coverage": 0.5671330549195821,
+      "days": 24,
+      "events": 27,
+      "horizons": [
+        {
+          "baselineRate": 0.11227532395151177,
+          "complete": 27,
+          "events": 27,
+          "hitRate": 0.18518518518518517,
+          "horizonH": 24,
+          "lift": 1.6493845545719459,
+          "meanReturn": 0.006015201784846257,
+          "medianReturn": -0.0010869565217391797,
+          "netAfterCost": 0.007712193636698107,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.18166364776368957,
+          "complete": 27,
+          "events": 27,
+          "hitRate": 0.25925925925925924,
+          "horizonH": 48,
+          "lift": 1.4271389045127347,
+          "meanReturn": 0.08979835218049817,
+          "medianReturn": -0.01087628228896298,
+          "netAfterCost": 0.09454571810642412,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.05378291765361572,
+          "complete": 27,
+          "events": 27,
+          "hitRate": 0.14814814814814814,
+          "horizonH": 24,
+          "lift": 2.754557666474765,
+          "meanReturn": 0.006015201784846257,
+          "medianReturn": -0.0010869565217391797,
+          "netAfterCost": 0.007712193636698107,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.09399470530862478,
+          "complete": 27,
+          "events": 27,
+          "hitRate": 0.2222222222222222,
+          "horizonH": 48,
+          "lift": 2.364199360938169,
+          "meanReturn": 0.08979835218049817,
+          "medianReturn": -0.01087628228896298,
+          "netAfterCost": 0.09454571810642412,
+          "targetPct": 15
+        }
+      ],
+      "key": "organic-spot",
+      "label": "Organic spot proxy",
+      "monthlyNet": {
+        "2026-01": -0.0028225697437949332,
+        "2026-02": 0.1285357176589987,
+        "2026-03": -0.007878500919731473,
+        "2026-04": 0.006466599100393706,
+        "2026-05": 0.013947357727855452,
+        "2026-06": 0.0009121783571881002
+      },
+      "months": 6,
+      "reasons": [
+        "27 events / 16 coins / 24 days / 6 months",
+        "10%×24h matched lift 1.65",
+        "after-cost/funding mean 0.77%",
+        "4/6 positive monthly folds"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.4271389045127347
+      },
+      "topCoinProfitShare": 0.26520782970376655,
+      "topDayProfitShare": 0.22368515010531098,
+      "walkForwardPositive": 4,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.011073482838059957,
+      "capability": "historical-fail",
+      "coins": 150,
+      "coverage": 0.5671330549195821,
+      "days": 181,
+      "events": 5094,
+      "horizons": [
+        {
+          "baselineRate": 0.11227532395151177,
+          "complete": 5094,
+          "events": 5094,
+          "hitRate": 0.06380054966627405,
+          "horizonH": 24,
+          "lift": 0.5682508624408648,
+          "meanReturn": -0.00405486073634876,
+          "medianReturn": -0.005835159924240829,
+          "netAfterCost": -0.0071754387732549255,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.18166364776368957,
+          "complete": 5094,
+          "events": 5094,
+          "hitRate": 0.12779740871613662,
+          "horizonH": 48,
+          "lift": 0.7034836649453233,
+          "meanReturn": -0.007011397529576306,
+          "medianReturn": -0.010024190521876586,
+          "netAfterCost": -0.010120758407079267,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.05378291765361572,
+          "complete": 5094,
+          "events": 5094,
+          "hitRate": 0.02866117000392619,
+          "horizonH": 24,
+          "lift": 0.5329047075600473,
+          "meanReturn": -0.00405486073634876,
+          "medianReturn": -0.005835159924240829,
+          "netAfterCost": -0.0071754387732549255,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.09399470530862478,
+          "complete": 5094,
+          "events": 5094,
+          "hitRate": 0.05751864939144091,
+          "horizonH": 48,
+          "lift": 0.6119349935997205,
+          "meanReturn": -0.007011397529576306,
+          "medianReturn": -0.010024190521876586,
+          "netAfterCost": -0.010120758407079267,
+          "targetPct": 15
+        }
+      ],
+      "key": "leverage-froth",
+      "label": "Leverage froth control",
+      "monthlyNet": {
+        "2026-01": -0.0074543027774100845,
+        "2026-02": -0.013077681439334816,
+        "2026-03": -0.006151858208748843,
+        "2026-04": 0.0009552386462738844,
+        "2026-05": -0.006555198709725538,
+        "2026-06": -0.011649908123142117
+      },
+      "months": 6,
+      "reasons": [
+        "5094 events / 150 coins / 181 days / 6 months",
+        "10%×24h matched lift 0.57",
+        "after-cost/funding mean -0.72%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.5329047075600473
+      },
+      "topCoinProfitShare": 0.5172532703349545,
+      "topDayProfitShare": 0.14570735052596093,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.0067044781464294274,
+      "capability": "historical-pass",
+      "coins": 16,
+      "coverage": 0.5671330549195821,
+      "days": 24,
+      "events": 27,
+      "horizons": [
+        {
+          "baselineRate": 0.11227532395151177,
+          "complete": 27,
+          "events": 27,
+          "hitRate": 0.18518518518518517,
+          "horizonH": 24,
+          "lift": 1.6493845545719459,
+          "meanReturn": 0.006015201784846257,
+          "medianReturn": -0.0010869565217391797,
+          "netAfterCost": 0.007712193636698107,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.18166364776368957,
+          "complete": 27,
+          "events": 27,
+          "hitRate": 0.25925925925925924,
+          "horizonH": 48,
+          "lift": 1.4271389045127347,
+          "meanReturn": 0.08979835218049817,
+          "medianReturn": -0.01087628228896298,
+          "netAfterCost": 0.09454571810642412,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.05378291765361572,
+          "complete": 27,
+          "events": 27,
+          "hitRate": 0.14814814814814814,
+          "horizonH": 24,
+          "lift": 2.754557666474765,
+          "meanReturn": 0.006015201784846257,
+          "medianReturn": -0.0010869565217391797,
+          "netAfterCost": 0.007712193636698107,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.09399470530862478,
+          "complete": 27,
+          "events": 27,
+          "hitRate": 0.2222222222222222,
+          "horizonH": 48,
+          "lift": 2.364199360938169,
+          "meanReturn": 0.08979835218049817,
+          "medianReturn": -0.01087628228896298,
+          "netAfterCost": 0.09454571810642412,
+          "targetPct": 15
+        }
+      ],
+      "key": "true-spot-led",
+      "label": "True spot-led",
+      "monthlyNet": {
+        "2026-01": -0.0028225697437949332,
+        "2026-02": 0.1285357176589987,
+        "2026-03": -0.007878500919731473,
+        "2026-04": 0.006466599100393706,
+        "2026-05": 0.013947357727855452,
+        "2026-06": 0.0009121783571881002
+      },
+      "months": 6,
+      "reasons": [
+        "27 events / 16 coins / 24 days / 6 months",
+        "10%×24h matched lift 1.65",
+        "after-cost/funding mean 0.77%",
+        "4/6 positive monthly folds"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.4271389045127347
+      },
+      "topCoinProfitShare": 0.26520782970376655,
+      "topDayProfitShare": 0.22368515010531098,
+      "walkForwardPositive": 4,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.005347711536115155,
+      "capability": "historical-fail",
+      "coins": 675,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 10608,
+      "horizons": [
+        {
+          "baselineRate": 0.10891409730535984,
+          "complete": 10608,
+          "events": 10608,
+          "hitRate": 0.10190422322775264,
+          "horizonH": 24,
+          "lift": 0.9356385054732282,
+          "meanReturn": 0.000597121696797152,
+          "medianReturn": -0.002687720552912831,
+          "netAfterCost": -0.002083418612403448,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.18871312778442878,
+          "complete": 10608,
+          "events": 10608,
+          "hitRate": 0.1833521870286576,
+          "horizonH": 48,
+          "lift": 0.971592115404419,
+          "meanReturn": -0.0012704097807329305,
+          "medianReturn": -0.006130158159243726,
+          "netAfterCost": -0.0036292548467208455,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.05485447373069299,
+          "complete": 10608,
+          "events": 10608,
+          "hitRate": 0.049679487179487176,
+          "horizonH": 24,
+          "lift": 0.9056597174441539,
+          "meanReturn": 0.000597121696797152,
+          "medianReturn": -0.002687720552912831,
+          "netAfterCost": -0.002083418612403448,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.10312444802072498,
+          "complete": 10608,
+          "events": 10608,
+          "hitRate": 0.09568250377073906,
+          "horizonH": 48,
+          "lift": 0.9278353058579251,
+          "meanReturn": -0.0012704097807329305,
+          "medianReturn": -0.006130158159243726,
+          "netAfterCost": -0.0036292548467208455,
+          "targetPct": 15
+        }
+      ],
+      "key": "umm-ema-control",
+      "label": "UMM EMA20 reclaim control",
+      "monthlyNet": {
+        "2026-01": -0.010000112467729966,
+        "2026-02": -0.005403852289169893,
+        "2026-03": -0.0015138143612562676,
+        "2026-04": 0.007670929175642804,
+        "2026-05": -0.0015932756361163704,
+        "2026-06": -0.002005813933481766
+      },
+      "months": 6,
+      "reasons": [
+        "10608 events / 675 coins / 181 days / 6 months",
+        "10%×24h matched lift 0.94",
+        "after-cost/funding mean -0.21%",
+        "1/6 positive monthly folds",
+        "pre-registered block-bootstrap lower bound is unavailable or non-positive",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.9056597174441539
+      },
+      "topCoinProfitShare": 0.03071196411683857,
+      "topDayProfitShare": 0.05624909834857427,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.007102658241122154,
+      "capability": "historical-fail",
+      "coins": 560,
+      "coverage": 0.848545910789333,
+      "days": 173,
+      "events": 1570,
+      "horizons": [
+        {
+          "baselineRate": 0.10190422322775264,
+          "complete": 1570,
+          "events": 1570,
+          "hitRate": 0.11082802547770701,
+          "horizonH": 24,
+          "lift": 1.0875704849838261,
+          "meanReturn": 0.0016610567376149305,
+          "medianReturn": -0.0026025514807319627,
+          "netAfterCost": -0.0006686660904105503,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.1833521870286576,
+          "complete": 1570,
+          "events": 1570,
+          "hitRate": 0.20573248407643313,
+          "horizonH": 48,
+          "lift": 1.122061794901184,
+          "meanReturn": 0.002419617596923676,
+          "medianReturn": -0.0018140482899138832,
+          "netAfterCost": 0.0007639538771784421,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.049679487179487176,
+          "complete": 1570,
+          "events": 1570,
+          "hitRate": 0.04777070063694268,
+          "horizonH": 24,
+          "lift": 0.9615779741113624,
+          "meanReturn": 0.0016610567376149305,
+          "medianReturn": -0.0026025514807319627,
+          "netAfterCost": -0.0006686660904105503,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.09568250377073906,
+          "complete": 1570,
+          "events": 1570,
+          "hitRate": 0.10127388535031848,
+          "horizonH": 48,
+          "lift": 1.0584368234445107,
+          "meanReturn": 0.002419617596923676,
+          "medianReturn": -0.0018140482899138832,
+          "netAfterCost": 0.0007639538771784421,
+          "targetPct": 15
+        }
+      ],
+      "key": "umm-b2",
+      "label": "UMM B2",
+      "monthlyNet": {
+        "2026-01": -0.017850898710210627,
+        "2026-02": 0.0064678314485443434,
+        "2026-03": -0.0006472949408101781,
+        "2026-04": 0.014686654023831259,
+        "2026-05": -0.00821934981320126,
+        "2026-06": 0.006929195826594502
+      },
+      "months": 6,
+      "reasons": [
+        "1570 events / 560 coins / 173 days / 6 months",
+        "10%×24h matched lift 1.09",
+        "after-cost/funding mean -0.07%",
+        "3/6 positive monthly folds",
+        "pre-registered block-bootstrap lower bound is unavailable or non-positive",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.9615779741113624
+      },
+      "topCoinProfitShare": 0.05963001853552709,
+      "topDayProfitShare": 0.16734817434493005,
+      "walkForwardPositive": 3,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.004126390252606927,
+      "capability": "historical-fail",
+      "coins": 159,
+      "coverage": 0.848545910789333,
+      "days": 95,
+      "events": 187,
+      "horizons": [
+        {
+          "baselineRate": 0.10190422322775264,
+          "complete": 187,
+          "events": 187,
+          "hitRate": 0.17647058823529413,
+          "horizonH": 24,
+          "lift": 1.7317298797409808,
+          "meanReturn": 0.015817220521471352,
+          "medianReturn": -0.005616991398981974,
+          "netAfterCost": 0.0147603043182628,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.1833521870286576,
+          "complete": 187,
+          "events": 187,
+          "hitRate": 0.25668449197860965,
+          "horizonH": 48,
+          "lift": 1.399953260107502,
+          "meanReturn": 0.018672135432217348,
+          "medianReturn": -0.001890359168241873,
+          "netAfterCost": 0.01958052468355425,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.049679487179487176,
+          "complete": 187,
+          "events": 187,
+          "hitRate": 0.11229946524064172,
+          "horizonH": 24,
+          "lift": 2.260479558392272,
+          "meanReturn": 0.015817220521471352,
+          "medianReturn": -0.005616991398981974,
+          "netAfterCost": 0.0147603043182628,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.09568250377073906,
+          "complete": 187,
+          "events": 187,
+          "hitRate": 0.1657754010695187,
+          "horizonH": 48,
+          "lift": 1.7325570980743394,
+          "meanReturn": 0.018672135432217348,
+          "medianReturn": -0.001890359168241873,
+          "netAfterCost": 0.01958052468355425,
+          "targetPct": 15
+        }
+      ],
+      "key": "umm-b2-oi",
+      "label": "UMM B2 quantity-OI challenger",
+      "monthlyNet": {
+        "2026-01": -0.012147427952202418,
+        "2026-02": 0.007430344703912292,
+        "2026-03": 0.033603000406176864,
+        "2026-04": 0.031970634611105365,
+        "2026-05": -0.0023714126405930047,
+        "2026-06": 0.020445524767004376
+      },
+      "months": 6,
+      "reasons": [
+        "187 events / 159 coins / 95 days / 6 months",
+        "10%×24h matched lift 1.73",
+        "after-cost/funding mean 1.48%",
+        "4/6 positive monthly folds",
+        "pre-registered block-bootstrap lower bound is unavailable or non-positive",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.399953260107502
+      },
+      "topCoinProfitShare": 0.18695365544753328,
+      "topDayProfitShare": 0.20249833019117808,
+      "walkForwardPositive": 4,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.006990633903850653,
+      "capability": "historical-fail",
+      "coins": 605,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 2681,
+      "horizons": [
+        {
+          "baselineRate": 0.12418476072895139,
+          "complete": 2681,
+          "events": 2681,
+          "hitRate": 0.17157776948899664,
+          "horizonH": 24,
+          "lift": 1.3816330480636538,
+          "meanReturn": -0.0002011932313176268,
+          "medianReturn": -0.005541871921182162,
+          "netAfterCost": -0.0018793528172930155,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.21739713894629487,
+          "complete": 2681,
+          "events": 2681,
+          "hitRate": 0.2622155911973144,
+          "horizonH": 48,
+          "lift": 1.2061593472124368,
+          "meanReturn": -0.006551369444097922,
+          "medianReturn": -0.010248901903367469,
+          "netAfterCost": -0.0073083872210468305,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.061756890952521536,
+          "complete": 2681,
+          "events": 2681,
+          "hitRate": 0.09212980231256994,
+          "horizonH": 24,
+          "lift": 1.491814126190371,
+          "meanReturn": -0.0002011932313176268,
+          "medianReturn": -0.005541871921182162,
+          "netAfterCost": -0.0018793528172930155,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.11935371319681151,
+          "complete": 2681,
+          "events": 2681,
+          "hitRate": 0.14285714285714285,
+          "horizonH": 48,
+          "lift": 1.1969224838574961,
+          "meanReturn": -0.006551369444097922,
+          "medianReturn": -0.010248901903367469,
+          "netAfterCost": -0.0073083872210468305,
+          "targetPct": 15
+        }
+      ],
+      "key": "deep-reclaim-armed",
+      "label": "S15 deep reclaim quantity-OI armed",
+      "monthlyNet": {
+        "2026-01": 0.000891363086732765,
+        "2026-02": 0.001190024036584683,
+        "2026-03": -0.001607469747442344,
+        "2026-04": 0.005481411979289288,
+        "2026-05": 0.00458099939708183,
+        "2026-06": -0.015775183721336083
+      },
+      "months": 6,
+      "reasons": [
+        "2681 events / 605 coins / 181 days / 6 months",
+        "10%×24h matched lift 1.38",
+        "after-cost/funding mean -0.19%",
+        "4/6 positive monthly folds",
+        "pre-registered block-bootstrap lower bound is unavailable or non-positive",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.1969224838574961
+      },
+      "topCoinProfitShare": 0.05432755034170275,
+      "topDayProfitShare": 0.07993548895299485,
+      "walkForwardPositive": 4,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.002590731588541217,
+      "capability": "historical-fail",
+      "coins": 304,
+      "coverage": 0.848545910789333,
+      "days": 161,
+      "events": 471,
+      "horizons": [
+        {
+          "baselineRate": 0.12418476072895139,
+          "complete": 471,
+          "events": 471,
+          "hitRate": 0.21868365180467092,
+          "horizonH": 24,
+          "lift": 1.7609540053145092,
+          "meanReturn": 0.008503376170258613,
+          "medianReturn": -0.004802305106450966,
+          "netAfterCost": 0.007067986233952879,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.21739713894629487,
+          "complete": 471,
+          "events": 471,
+          "hitRate": 0.3099787685774947,
+          "horizonH": 48,
+          "lift": 1.4258640664727005,
+          "meanReturn": 0.0021417229779697035,
+          "medianReturn": -0.008396458884731284,
+          "netAfterCost": 0.0019818572879484633,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.061756890952521536,
+          "complete": 471,
+          "events": 471,
+          "hitRate": 0.12526539278131635,
+          "horizonH": 24,
+          "lift": 2.028363002885296,
+          "meanReturn": 0.008503376170258613,
+          "medianReturn": -0.004802305106450966,
+          "netAfterCost": 0.007067986233952879,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.11935371319681151,
+          "complete": 471,
+          "events": 471,
+          "hitRate": 0.18259023354564755,
+          "horizonH": 48,
+          "lift": 1.5298244910450376,
+          "meanReturn": 0.0021417229779697035,
+          "medianReturn": -0.008396458884731284,
+          "netAfterCost": 0.0019818572879484633,
+          "targetPct": 15
+        }
+      ],
+      "key": "deep-reclaim-confirmed",
+      "label": "S15 deep reclaim confirmed",
+      "monthlyNet": {
+        "2026-01": -0.004887744775773356,
+        "2026-02": -0.002372472116665995,
+        "2026-03": 0.004188722571494012,
+        "2026-04": 0.028667874279887488,
+        "2026-05": 0.017245997018698403,
+        "2026-06": 0.006261059461248756
+      },
+      "months": 6,
+      "reasons": [
+        "471 events / 304 coins / 161 days / 6 months",
+        "10%×24h matched lift 1.76",
+        "after-cost/funding mean 0.71%",
+        "4/6 positive monthly folds",
+        "pre-registered block-bootstrap lower bound is unavailable or non-positive",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.4258640664727005
+      },
+      "topCoinProfitShare": 0.052599488026710196,
+      "topDayProfitShare": 0.054784858677176494,
+      "walkForwardPositive": 4,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.011641659749436728,
+      "capability": "historical-fail",
+      "coins": 475,
+      "coverage": 0.848545910789333,
+      "days": 180,
+      "events": 1110,
+      "horizons": [
+        {
+          "baselineRate": 0.2192582953806116,
+          "complete": 1110,
+          "events": 1110,
+          "hitRate": 0.19099099099099098,
+          "horizonH": 24,
+          "lift": 0.8710776057957066,
+          "meanReturn": -0.0033008516202403825,
+          "medianReturn": -0.0138777602759661,
+          "netAfterCost": -0.0049331991247449,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.29017566688353935,
+          "complete": 1110,
+          "events": 1110,
+          "hitRate": 0.26576576576576577,
+          "horizonH": 48,
+          "lift": 0.9158788833676726,
+          "meanReturn": -0.008511651257293775,
+          "medianReturn": -0.016927269874405626,
+          "netAfterCost": -0.008929602419455921,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.12817176317501627,
+          "complete": 1110,
+          "events": 1110,
+          "hitRate": 0.0963963963963964,
+          "horizonH": 24,
+          "lift": 0.7520876206155394,
+          "meanReturn": -0.0033008516202403825,
+          "medianReturn": -0.0138777602759661,
+          "netAfterCost": -0.0049331991247449,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.18867924528301888,
+          "complete": 1110,
+          "events": 1110,
+          "hitRate": 0.15765765765765766,
+          "horizonH": 48,
+          "lift": 0.8355855855855855,
+          "meanReturn": -0.008511651257293775,
+          "medianReturn": -0.016927269874405626,
+          "netAfterCost": -0.008929602419455921,
+          "targetPct": 15
+        }
+      ],
+      "key": "entry-watch-r1",
+      "label": "Entry-watch R1 breakout retest",
+      "monthlyNet": {
+        "2026-01": -0.010726223382121893,
+        "2026-02": -0.006824102990118218,
+        "2026-03": -0.006347772595036954,
+        "2026-04": -0.0019514815135033706,
+        "2026-05": -0.000733352084500032,
+        "2026-06": -0.005364500100328819
+      },
+      "months": 6,
+      "reasons": [
+        "1110 events / 475 coins / 180 days / 6 months",
+        "10%×24h matched lift 0.87",
+        "after-cost/funding mean -0.49%",
+        "0/6 positive monthly folds",
+        "pre-registered block-bootstrap lower bound is unavailable or non-positive",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.7520876206155394
+      },
+      "topCoinProfitShare": 0.10109104076059931,
+      "topDayProfitShare": 0.11990370607281654,
+      "walkForwardPositive": 0,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.006960395266583443,
+      "capability": "historical-fail",
+      "coins": 653,
+      "coverage": 0.848545910789333,
+      "days": 182,
+      "events": 5426,
+      "horizons": [
+        {
+          "baselineRate": 0.2952273863068466,
+          "complete": 5426,
+          "events": 5426,
+          "hitRate": 0.22834500552893475,
+          "horizonH": 24,
+          "lift": 0.773454686522892,
+          "meanReturn": -0.0012830104509881954,
+          "medianReturn": -0.012106787699621702,
+          "netAfterCost": -0.002784677395330266,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.3684407796101949,
+          "complete": 5426,
+          "events": 5426,
+          "hitRate": 0.3144120899373387,
+          "horizonH": 48,
+          "lift": 0.8533585513253507,
+          "meanReturn": -0.0025589121410723383,
+          "medianReturn": -0.01708863095491825,
+          "netAfterCost": -0.003368772124485522,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.18928035982008995,
+          "complete": 5426,
+          "events": 5426,
+          "hitRate": 0.1349060081091043,
+          "horizonH": 24,
+          "lift": 0.712731147792258,
+          "meanReturn": -0.0012830104509881954,
+          "medianReturn": -0.012106787699621702,
+          "netAfterCost": -0.002784677395330266,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.25087456271864067,
+          "complete": 5426,
+          "events": 5426,
+          "hitRate": 0.19812016218208625,
+          "horizonH": 48,
+          "lift": 0.7897180169847702,
+          "meanReturn": -0.0025589121410723383,
+          "medianReturn": -0.01708863095491825,
+          "netAfterCost": -0.003368772124485522,
+          "targetPct": 15
+        }
+      ],
+      "key": "entry-watch-v2",
+      "label": "Entry-watch V2 breakout retest",
+      "monthlyNet": {
+        "2026-01": -0.002163020165996216,
+        "2026-02": -0.011759363984842983,
+        "2026-03": -0.0027329946375291925,
+        "2026-04": 0.0012705460888046965,
+        "2026-05": -0.0016696886015826144,
+        "2026-06": -0.004149787654792307
+      },
+      "months": 6,
+      "reasons": [
+        "5426 events / 653 coins / 182 days / 6 months",
+        "10%×24h matched lift 0.77",
+        "after-cost/funding mean -0.28%",
+        "1/6 positive monthly folds",
+        "pre-registered block-bootstrap lower bound is unavailable or non-positive",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "fail",
+        "worstLift": 0.712731147792258
+      },
+      "topCoinProfitShare": 0.06249212940066038,
+      "topDayProfitShare": 0.08632121581184783,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.005662919649771164,
+      "capability": "historical-fail",
+      "coins": 684,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 20940,
+      "horizons": [
+        {
+          "baselineRate": 0.10891409730535984,
+          "complete": 20940,
+          "events": 20940,
+          "hitRate": 0.22239732569245463,
+          "horizonH": 24,
+          "lift": 2.04195169582983,
+          "meanReturn": -0.0010564755787765283,
+          "medianReturn": -0.011294857502130273,
+          "netAfterCost": -0.0026860867583371906,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.18871312778442878,
+          "complete": 20940,
+          "events": 20940,
+          "hitRate": 0.30009551098376314,
+          "horizonH": 48,
+          "lift": 1.5902206407525021,
+          "meanReturn": -0.0013070426575255004,
+          "medianReturn": -0.014156808876470028,
+          "netAfterCost": -0.0020323497482609243,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.05485447373069299,
+          "complete": 20940,
+          "events": 20940,
+          "hitRate": 0.13400191021967525,
+          "horizonH": 24,
+          "lift": 2.442862014820434,
+          "meanReturn": -0.0010564755787765283,
+          "medianReturn": -0.011294857502130273,
+          "netAfterCost": -0.0026860867583371906,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.10312444802072498,
+          "complete": 20940,
+          "events": 20940,
+          "hitRate": 0.1936007640878701,
+          "horizonH": 48,
+          "lift": 1.877350791239746,
+          "meanReturn": -0.0013070426575255004,
+          "medianReturn": -0.014156808876470028,
+          "netAfterCost": -0.0020323497482609243,
+          "targetPct": 15
+        }
+      ],
+      "key": "strength70",
+      "label": "Strength ≥70 crossing",
+      "monthlyNet": {
+        "2026-01": -0.006959338946989868,
+        "2026-02": -0.005874775599371955,
+        "2026-03": -0.0030474146155877475,
+        "2026-04": 0.004948309460794277,
+        "2026-05": -0.001336083719627332,
+        "2026-06": -0.005164518574985084
+      },
+      "months": 6,
+      "reasons": [
+        "20940 events / 684 coins / 181 days / 6 months",
+        "10%×24h matched lift 2.04",
+        "after-cost/funding mean -0.27%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.5902206407525021
+      },
+      "topCoinProfitShare": 0.06118993121559995,
+      "topDayProfitShare": 0.053215811997817476,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    },
+    {
+      "bootstrapLower95": -0.005712480135307322,
+      "capability": "historical-fail",
+      "coins": 679,
+      "coverage": 0.848545910789333,
+      "days": 181,
+      "events": 14237,
+      "horizons": [
+        {
+          "baselineRate": 0.10891409730535984,
+          "complete": 14237,
+          "events": 14237,
+          "hitRate": 0.2624850741026902,
+          "horizonH": 24,
+          "lift": 2.4100192775483147,
+          "meanReturn": -0.0016166210010664516,
+          "medianReturn": -0.01317701958384343,
+          "netAfterCost": -0.0025613766869553383,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.18871312778442878,
+          "complete": 14237,
+          "events": 14237,
+          "hitRate": 0.3397485425300274,
+          "horizonH": 48,
+          "lift": 1.8003439745756837,
+          "meanReturn": -0.0017711039264942457,
+          "medianReturn": -0.017842876165113153,
+          "netAfterCost": -0.001515220621022588,
+          "targetPct": 10
+        },
+        {
+          "baselineRate": 0.05485447373069299,
+          "complete": 14237,
+          "events": 14237,
+          "hitRate": 0.16527358291774952,
+          "horizonH": 24,
+          "lift": 3.01294628637141,
+          "meanReturn": -0.0016166210010664516,
+          "medianReturn": -0.01317701958384343,
+          "netAfterCost": -0.0025613766869553383,
+          "targetPct": 15
+        },
+        {
+          "baselineRate": 0.10312444802072498,
+          "complete": 14237,
+          "events": 14237,
+          "hitRate": 0.22631172297534594,
+          "horizonH": 48,
+          "lift": 2.194549666145742,
+          "meanReturn": -0.0017711039264942457,
+          "medianReturn": -0.017842876165113153,
+          "netAfterCost": -0.001515220621022588,
+          "targetPct": 15
+        }
+      ],
+      "key": "top10",
+      "label": "全市場 Top 10 entry",
+      "monthlyNet": {
+        "2026-01": -0.007041012881420361,
+        "2026-02": -0.008157683995849672,
+        "2026-03": -0.00034854156259878544,
+        "2026-04": 0.006680155774265641,
+        "2026-05": -0.0012484125429448715,
+        "2026-06": -0.005355963445215071
+      },
+      "months": 6,
+      "reasons": [
+        "14237 events / 679 coins / 181 days / 6 months",
+        "10%×24h matched lift 2.41",
+        "after-cost/funding mean -0.26%",
+        "1/6 positive monthly folds",
+        "one or more fixed historical gates failed"
+      ],
+      "robustness": {
+        "note": "Frozen cross-target cells: 10%/15% × 24h/48h; detector thresholds are production constants.",
+        "status": "pass",
+        "worstLift": 1.8003439745756837
+      },
+      "topCoinProfitShare": 0.0754705892840396,
+      "topDayProfitShare": 0.03803623879308891,
+      "walkForwardPositive": 1,
+      "walkForwardTotal": 6
+    }
+  ],
+  "sourceFingerprint": "7906082333c5765f5f5e20b595b764cf3cda4165996d370294bb9a24dc294522",
+  "universe": {
+    "byMonth": {
+      "2026-01": 625,
+      "2026-02": 637,
+      "2026-03": 652,
+      "2026-04": 668,
+      "2026-05": 700,
+      "2026-06": 757
+    },
+    "coinMonths": 4039,
+    "uniqueCoins": 759
+  },
+  "v": 1
+}

@@ -142,3 +142,7 @@
 
 ## Results block
 2026-07-13 implementation:quantity OI v2、純 detector/state machine、atomic runtime、Top-1/每日10、兩段 threaded test TG、Push UI及 provisional log 已完成。Gate 未通過，正式 badge／模擬盤仍關閉；test-only feed 預設 ON，可在設定 opt-out 轉 shadow。
+
+2026-07-17 六個月 backfill 重審(詳見 report §14-17):「quantity-OI 冇得 backfill」證實係錯 — Binance Vision daily metrics 有真實 `sum_open_interest` 返到 ≥2025-01(符合「禁止假 backfill」:同源真系列,非 USD 倒推)。backfill 2026-01..06 後 gate 讀數:176 alerts / 30 confirms,24h net/event **−0.12%**,walk-forward FAIL,placebo 正常 fail — 定性由「數據唔夠」變「量度咗,係負」。另外量化咗 🟢 wick-miss 漏洞(影線掂 L0+2ATR 即判死,live 樣本 HOME/AERGO/CAP/BASED 全部咁樣走甩):harness 加咗 `EXPERIMENT_VARIANTS` 突破收市確認研究 cell(唔入 promotion battery,凍結幾何不變)— 3個月睇落有肉(captured +2.9%/單)但 6個月縮到 +0.96%/單、precision lift 0.44,係 noise 特徵 → **突破確認唔准上 runtime(連 test 都唔准)**,cell 留喺 harness 做日後重測。Test feed 預設 ON 去留係用戶級決定。
+
+2026-07-21 統一 archive-universe audit cross-check：上面 90-symbol／專用 harness 數字保留作歷史紀錄；根目錄 H1 audit 係全市場逐月 universe 嘅最新 archive 準據。共同 production detector 重跑得到 armed 2,681 events（10%×24h matched lift ×1.38、net −0.19%）及 confirmed 471 events / 304 coins / 161 days（matched lift ×1.76、net +0.71%、但 bootstrap L95 −0.26%）；兩者完整 gate 都係 `historical-fail`。歷史 cohort 無法重建實際 Top-1 delivery，所以 Top-1／Telegram 仍屬 `forward-only`。用戶其後拍板：自動 test feed 關閉；detector、selection round、lifecycle 同 shadow evidence 照錄，badge／paper／tier 維持關閉。見 `H1-EVIDENCE-DECISION-2026-07-21.md`。

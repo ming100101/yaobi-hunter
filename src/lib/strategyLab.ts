@@ -49,6 +49,8 @@ export const STRATEGY_LABELS: Record<StrategyId, string> = {
   'rebuild-r1': '📈 重建增倉',
   'flush-breakout': '⚡ 縮倉突破',
   'deep-reclaim-v0': '深跌收復',
+  'top-t1-reversal-v2': 'T1 反轉確認 v2（空）',
+  'wbottom-w2-uncrowded-v2': 'W2 低擁擠趨勢 v2',
 };
 
 export interface Native15mBar {
@@ -112,7 +114,7 @@ function coverageFor(path: Native15mBar[], entryTs: number, horizonH: number): D
   };
 }
 
-function orderingFor(entry: number, path: Native15mBar[]): ThresholdOrdering {
+function orderingFor(entry: number, path: Native15mBar[], side: 'long' | 'short' = 'long'): ThresholdOrdering {
   let plus4At: number | undefined;
   let plus8At: number | undefined;
   let plus15At: number | undefined;
@@ -120,11 +122,11 @@ function orderingFor(entry: number, path: Native15mBar[]): ThresholdOrdering {
   for (const b of path) {
     // Conservative ordering: if both sides touch inside one candle, the stop
     // happened first. We never manufacture a favourable intra-bar sequence.
-    if (minus3At == null && b.low <= entry * 0.97) minus3At = b.closeTs;
+    if (minus3At == null && (side === 'long' ? b.low <= entry * 0.97 : b.high >= entry * 1.03)) minus3At = b.closeTs;
     if (minus3At === b.closeTs) continue;
-    if (plus4At == null && b.high >= entry * 1.04) plus4At = b.closeTs;
-    if (plus8At == null && b.high >= entry * 1.08) plus8At = b.closeTs;
-    if (plus15At == null && b.high >= entry * 1.15) plus15At = b.closeTs;
+    if (plus4At == null && (side === 'long' ? b.high >= entry * 1.04 : b.low <= entry * 0.96)) plus4At = b.closeTs;
+    if (plus8At == null && (side === 'long' ? b.high >= entry * 1.08 : b.low <= entry * 0.92)) plus8At = b.closeTs;
+    if (plus15At == null && (side === 'long' ? b.high >= entry * 1.15 : b.low <= entry * 0.85)) plus15At = b.closeTs;
   }
   return {
     plus4At,
@@ -150,6 +152,7 @@ export function evaluateStrategyCandidate(
   policy: ExecutionPolicy = EXECUTION_POLICIES['time24-sl3-v1'],
   funding: FundingCharge[] = [],
 ): StrategyOutcome {
+  const side = candidate.side ?? 'long';
   const bars = normalizeNative15mBars(rawBars);
   const entryTs = nextNative15mOpen(candidate.decisionTs);
   const expectedEntry = bars.find((b) => b.openTs === entryTs);
@@ -157,7 +160,7 @@ export function evaluateStrategyCandidate(
   if (!expectedEntry) {
     return {
       type: 'strategy-outcome', v: 1, id: baseId, candidateId: candidate.id,
-      strategyId: candidate.strategyId, executionPolicyId: policy.id, sym: candidate.sym,
+      strategyId: candidate.strategyId, executionPolicyId: policy.id, sym: candidate.sym, side,
       decisionTs: candidate.decisionTs, entryTs, entryPx: 0, exitTs: entryTs,
       exitPx: 0, grossReturn: 0, costReturn: 0, fundingReturn: 0, netReturn: 0,
       mfe: 0, mae: 0, ordering: { plus4BeforeMinus3: false },
@@ -173,22 +176,24 @@ export function evaluateStrategyCandidate(
   if (!coverage.complete) {
     return {
       type: 'strategy-outcome', v: 1, id: baseId, candidateId: candidate.id,
-      strategyId: candidate.strategyId, executionPolicyId: policy.id, sym: candidate.sym,
+      strategyId: candidate.strategyId, executionPolicyId: policy.id, sym: candidate.sym, side,
       decisionTs: candidate.decisionTs, entryTs, entryPx: entry, exitTs: path.length ? path[path.length - 1].closeTs : entryTs,
       exitPx: path.length ? path[path.length - 1].close : entry, grossReturn: 0, costReturn: 0,
       fundingReturn: 0, netReturn: 0, mfe: 0, mae: 0,
-      ordering: orderingFor(entry, path), coverage, terminal: 'insufficient-data',
+      ordering: orderingFor(entry, path, side), coverage, terminal: 'insufficient-data',
     };
   }
 
   let mfe = -Infinity;
   let mae = Infinity;
   for (const b of path) {
-    mfe = Math.max(mfe, b.high / entry - 1);
-    mae = Math.min(mae, b.low / entry - 1);
+    const favorable = side === 'long' ? b.high / entry - 1 : 1 - b.low / entry;
+    const adverse = side === 'long' ? b.low / entry - 1 : 1 - b.high / entry;
+    mfe = Math.max(mfe, favorable);
+    mae = Math.min(mae, adverse);
   }
-  const ordering = orderingFor(entry, path);
-  const stop = entry * 0.97;
+  const ordering = orderingFor(entry, path, side);
+  const stop = entry * (side === 'long' ? 0.97 : 1.03);
   let terminal: StrategyOutcome['terminal'] = 'time';
   let exitTs = path[path.length - 1].closeTs;
   let exitPx = path[path.length - 1].close;
@@ -196,19 +201,19 @@ export function evaluateStrategyCandidate(
   const reductions: Array<{ ts: number; frac: number }> = [];
 
   if (policy.id === 'time24-sl3-v1') {
-    const stopped = path.find((b) => b.low <= stop);
+    const stopped = path.find((b) => side === 'long' ? b.low <= stop : b.high >= stop);
     if (stopped) {
       terminal = 'stop';
       exitTs = stopped.closeTs;
       exitPx = stop;
     }
-    grossReturn = exitPx / entry - 1;
+    grossReturn = side === 'long' ? exitPx / entry - 1 : 1 - exitPx / entry;
   } else {
     let remaining = 1;
     let took4 = false;
     let took8 = false;
     for (const b of path) {
-      if (b.low <= stop) {
+      if (side === 'long' ? b.low <= stop : b.high >= stop) {
         grossReturn += remaining * -0.03;
         reductions.push({ ts: b.closeTs, frac: remaining });
         remaining = 0;
@@ -217,30 +222,30 @@ export function evaluateStrategyCandidate(
         terminal = 'stop';
         break;
       }
-      if (!took4 && b.high >= entry * 1.04) {
+      if (!took4 && (side === 'long' ? b.high >= entry * 1.04 : b.low <= entry * 0.96)) {
         grossReturn += 0.5 * 0.04;
         remaining -= 0.5;
         reductions.push({ ts: b.closeTs, frac: 0.5 });
         took4 = true;
       }
-      if (!took8 && b.high >= entry * 1.08) {
+      if (!took8 && (side === 'long' ? b.high >= entry * 1.08 : b.low <= entry * 0.92)) {
         grossReturn += 0.3 * 0.08;
         remaining -= 0.3;
         reductions.push({ ts: b.closeTs, frac: 0.3 });
         took8 = true;
       }
-      if (b.high >= entry * 1.15) {
+      if (side === 'long' ? b.high >= entry * 1.15 : b.low <= entry * 0.85) {
         grossReturn += remaining * 0.15;
         reductions.push({ ts: b.closeTs, frac: remaining });
         remaining = 0;
         exitTs = b.closeTs;
-        exitPx = entry * 1.15;
+        exitPx = entry * (side === 'long' ? 1.15 : 0.85);
         terminal = 'ladder-complete';
         break;
       }
     }
     if (remaining > 1e-9) {
-      grossReturn += remaining * (exitPx / entry - 1);
+      grossReturn += remaining * (side === 'long' ? exitPx / entry - 1 : 1 - exitPx / entry);
       reductions.push({ ts: exitTs, frac: remaining });
     }
   }
@@ -250,11 +255,11 @@ export function evaluateStrategyCandidate(
     for (const r of reductions) if (r.ts < ts) rem -= r.frac;
     return Math.max(0, rem);
   };
-  const fundingReturn = fundingCost(funding, entryTs, exitTs, remainingAt);
+  const fundingReturn = fundingCost(funding, entryTs, exitTs, remainingAt) * (side === 'long' ? 1 : -1);
   const costReturn = policy.roundTripCostBps / 10_000;
   return {
     type: 'strategy-outcome', v: 1, id: baseId, candidateId: candidate.id,
-    strategyId: candidate.strategyId, executionPolicyId: policy.id, sym: candidate.sym,
+    strategyId: candidate.strategyId, executionPolicyId: policy.id, sym: candidate.sym, side,
     decisionTs: candidate.decisionTs, entryTs, entryPx: entry, exitTs, exitPx,
     grossReturn, costReturn, fundingReturn, netReturn: grossReturn - costReturn - fundingReturn,
     mfe, mae, ordering, coverage, terminal,

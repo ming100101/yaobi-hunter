@@ -5,6 +5,7 @@ import { ema } from './indicators';
 import { fmtPct } from './format';
 import { FLUSH_FORWARD_NOTE, oldStudyEvidence } from './evidenceCopy';
 import { evaluateBoardingB2 } from './boardingB2';
+import { H1_EVIDENCE_DECISION } from './evidenceDecision';
 
 // ---------------------------------------------------------------------------
 // Pattern interpretation library (型態解讀).
@@ -694,7 +695,7 @@ function computeSqueeze(coin: Coin): { sqzSetup: boolean; sqzBreakout: Ctx['sqzB
 // stealth-spot-accum FAILED and stays recording-only. Both are still computed
 // for recording (spotSignals) regardless of these ship flags. basis-anomaly (the
 // 3rd read) needs basis history and lands with the recording-eval work — not here.
-const SPOT_PUMP_SHIPPED = true; // gate: +10%/24h lift ×1.79 — spotVolZ the causal driver (momentum-only ×1.27), robust ±25% (×1.70-1.90), 76/114 coins, look-ahead clean
+const SPOT_PUMP_SHIPPED = H1_EVIDENCE_DECISION.insights.spotPump;
 const SPOT_ACCUM_SHIPPED = false; // gate: ×0.54 (worse than baseline) — recording-only
 
 // S6 squeeze detectors (scripts/backtest.ts --mode squeeze; gate run 2026-07-06,
@@ -702,7 +703,7 @@ const SPOT_ACCUM_SHIPPED = false; // gate: ×0.54 (worse than baseline) — reco
 // volZ±25% ×1.36/1.39, t15h24 ×1.31), 113 coins, meanRet +1.3% vs base −0.1%.
 // squeeze-setup ALONE tested ×0.85-0.97 on every def → no read, recording-only.
 // D2 收斂比 headline ×1.73 but FAILED robustness (thresh−25% ×0.58) → not shipped.
-const SQUEEZE_BREAKOUT_SHIPPED = true;
+const SQUEEZE_BREAKOUT_SHIPPED = H1_EVIDENCE_DECISION.insights.squeezeD3;
 const SQUEEZE_SETUP_SHIPPED = false; // below baseline — iron rule, no UI
 
 // S7 boarding (docs/roadmap/S7-boarding.md; gate 2026-07-06, ~37d @1H, 114 coins):
@@ -710,7 +711,7 @@ const SQUEEZE_SETUP_SHIPPED = false; // below baseline — iron rule, no UI
 // +3.9%/signal, ⚡ overlap 0% / squeeze 15%, median 11h to +10% touch → SHIPPED
 // (detail-view only, needs the long 1H series). B1 深跌首彈 meanRet −3.4% (knife)
 // and B3 核心線 composite ×0.74 (below baseline) → dead, not even recording flags.
-const BOARDING_B2_SHIPPED = true;
+const BOARDING_B2_SHIPPED = H1_EVIDENCE_DECISION.insights.boardingB2;
 // D1-setup (bbPctile≤0.1) is the old volatility-squeeze read's metric: ×0.85 as
 // a standalone setup → the read is retired below (kept in code, gate off).
 const VOL_SQUEEZE_RETIRED = true;
@@ -719,12 +720,12 @@ const VOL_SQUEEZE_RETIRED = true;
 // @1H, +10%/24h): R1 ×2.60, ALL robustness ≥×1.83, overlap ⚡ 9%/sqD3 35%,
 // medTTH 8h → SHIPPED (badge + Telegram, 用戶拍板過 gate 即通知). R2 ×1.46 /
 // R3 ×2.31 recording-only. 申報: meanRet@24h +0.3% 薄.
-const REBUILD_R1_SHIPPED = true;
+const REBUILD_R1_SHIPPED = H1_EVIDENCE_DECISION.insights.rebuildR1;
 // S13 virgin (docs/roadmap/S13-virgin-expansion.md; gate 2026-07-07, 296 幣
 // ~37d @1H Binance, +10%/24h): V2 ×2.76, ALL robustness ≥×1.85, overlap ⚡ 0%
 // / R1 0% / R2 32% / sqD3 29% → SHIPPED. V1 ×2.27 / V3 ×2.19 recording-only.
 // 申報: meanRet@24h ≈ +0.01% (呢個窗全家族都薄; R1 同窗 re-gate 都係 +0.01%).
-const VIRGIN_V2_SHIPPED = true;
+const VIRGIN_V2_SHIPPED = H1_EVIDENCE_DECISION.insights.virginV2;
 // S10 top (SHORT): T1-T4 全部 n<20 (6/3/0/0) → recording-only, NO ship, NO
 // short card, NO paper S-arm until E1 accumulates samples.
 // S11 wbottom: W2 主 ×1.41 過但 t10/h48 ×1.14 敗 cross-target → recording-only.
@@ -779,10 +780,11 @@ export function squeezeSignals(coin: Coin): [0 | 1, 0 | 1] | null {
   return [sq.sqzSetup ? 1 : 0, sq.sqzBreakout ? 1 : 0];
 }
 
-// S2: does spot-led-pump fire AND is it shipped? Used by toLite to set the
-// screener-row badge flag, so the badge honours the per-detector gate above.
+// Raw detector truth for CoinLite/forward shadow collection. Product surfaces
+// apply H1_EVIDENCE_DECISION separately, so retiring a badge cannot erase the
+// evidence stream.
 export function spotPumpFires(coin: Coin): boolean {
-  if (!SPOT_PUMP_SHIPPED || coin.spotCandles == null) return false;
+  if (coin.spotCandles == null) return false;
   const ctx = buildCtx(coin);
   return ctx ? spotLedPump(ctx) : false;
 }
@@ -790,14 +792,14 @@ export function spotPumpFires(coin: Coin): boolean {
 // S9: does rebuild-R1 fire AND is it shipped? toLite badge flag + the recorder's
 // Telegram rising-edge source (user decision 2026-07-06: gate-passers notify).
 export function rebuildFires(coin: Coin): boolean {
-  return REBUILD_R1_SHIPPED && computeRebuildR1(coin) != null;
+  return computeRebuildR1(coin) != null;
 }
 
 // S13: does virgin-V2 fire AND is it shipped? Same tier as R1 (badge + Telegram
 // via the recorder's rising-edge class; gate-passers notify per the standing
 // 2026-07-06 拍板).
 export function virginFires(coin: Coin): boolean {
-  return VIRGIN_V2_SHIPPED && computeVirginV2(coin) != null;
+  return computeVirginV2(coin) != null;
 }
 
 // [V1, V2, V3] — V2 shipped ×2.76; V1 ×2.27 / V3 ×2.19 recording-only (E1
@@ -1021,6 +1023,7 @@ const DETECTORS: Detector[] = [
       : null,
   // breakout without leverage — cleaner structure, less unwind risk
   (c) =>
+    H1_EVIDENCE_DECISION.insights.spotPump &&
     c.ret4h >= 0.02 && Math.abs(c.oi4h) < 1.5 && c.buyShare4h > 0.55 && c.volZ > 1
       ? {
           id: 'spot-led-breakout',
@@ -1311,7 +1314,7 @@ export function interpret(coin: Coin): Insight[] {
   // over 154 Binance-listed small caps, 37d @1H. The quiet setup alone tested
   // BELOW base rate, so this fires only on the confirmed trigger.
   const fb = detectFlushBreakout(coin.candles, coin.volume, coin.oi, coin.fundingHist);
-  if (fb) {
+  if (fb && H1_EVIDENCE_DECISION.insights.flushBreakout) {
     out.push({
       id: 'flush-breakout',
       title: '縮倉突破',
@@ -1330,7 +1333,7 @@ export function interpret(coin: Coin): Insight[] {
   // 早期蓄力 — watchlist tier, backtested weaker than ⚡ and labeled as such:
   // consistently positive forward returns across specs, but lift only
   // ×1.0-1.24 (the flashy ×1.61 didn't survive robustness checks).
-  if (coin.earlyAccum) {
+  if (coin.earlyAccum && H1_EVIDENCE_DECISION.insights.earlyAccum) {
     const ea = coin.earlyAccum;
     out.push({
       id: 'early-accum',

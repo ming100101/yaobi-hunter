@@ -120,3 +120,14 @@ Reproduce with:
 npm run entry-watch -- --month 2026-06
 npm run entry-watch -- --month 2026-06 --json
 ```
+
+## 2026-07-21 superseded evidence note
+
+以上 June-only 結果保留作當時研究紀錄，但唔再係 archive evidence 嘅最新準據。統一 H1 audit 用逐月完整 universe、同一 production pure detector、next native 15m open、as-of OI、30bps + actual funding、matched controls、六個月 folds 同 day-block bootstrap 重跑：
+
+- R1 breakout retest：1,110 events / 475 coins / 180 days / 6 months；10%×24h matched lift ×0.87、net −0.49%、0/6 positive folds、bootstrap L95 −1.16% → `historical-fail`。
+- V2 breakout retest：5,426 events / 653 coins / 182 days / 6 months；10%×24h matched lift ×0.77、net −0.28%、1/6 positive folds、bootstrap L95 −0.70% → `historical-fail`。
+
+所以兩項由「一個月樣本不足」改為 **H1 historical gate failed**；唔再寫成等待 recordings。詳見根目錄 `HISTORICAL-EVIDENCE-AUDIT-2026-H1.md`。呢個分類唔會自動改通知、entry-watch toggle、paper rule 或 tier。
+
+2026-07-21 用戶後續拍板：entry-watch production availability 關閉；唔再 arm／monitor 新 R1、V2 或 ⚡ watch。現有 state file 保留作 audit，冇刪資料；復議必須係新預註冊規則或真正 forward holdout，而唔係繼續叫「收集中」。

@@ -55,3 +55,9 @@
 - B2 嘅 EMA 喺 1H series 頭段唔穩(warmup ≥ 50+48 bar)。
 - 反追價 cap 唔准事後放寬去遷就任何一個樣本(ADA 亮唔到係 feature 唔係 bug)。
 - 老詹眞實方法未知(佢有 Binance/Alpha/GMGN 外部訊號源)— 我哋做嘅係「佢嘅可觀察形狀」嘅本地重建,唔係抄佢公式。
+
+## 2026-07-21 H1 evidence update
+
+B2 EMA20 reclaim 全市場六個月重跑 1,570 events / 560 coins / 173 days：10%×24h matched lift ×1.09、net −0.07%、3/6 positive folds、bootstrap L95 −0.64%，分類 `historical-fail`。舊細窗 ×2.04 結論保留作歷史紀錄；今次只改 evidence 分類，detail view 同其他 live 行為冇自動改。
+
+用戶其後拍板：B2 detail insight OFF；B2／B2+quantity-OI／EMA control 繼續 forward shadow，但 Strategy Lab 明標 `H1 歷史失敗 · 影子`。

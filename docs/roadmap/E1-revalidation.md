@@ -28,3 +28,16 @@ Register a monthly scheduled task that runs a script performing steps 1-4 and dr
 ## 陷阱 / Do-NOT
 - 樣本少嘅月份(⚡ events < 10)明寫「樣本不足,不作結論」— 唔好喺 noise 度讀故事。呢個 project 嘅誠實文化(README:57 嘅 ×1.61 selection-noise 教訓)要延續。
 - Do NOT auto-demote/promote from this report — that's E2's rules, applied deliberately.
+
+## 2026-07-21 H1 historical backfill audit
+
+`npm run cache-evidence` and `npm run audit-evidence -- --offline` now provide a
+separate, checksum-verified 2026-01..06 archive lane. The resulting root report
+is `HISTORICAL-EVIDENCE-AUDIT-2026-H1.md` (plus deterministic JSON). It
+supersedes any E1 blocker that only said Binance history or quantity OI could
+not be backfilled.
+
+This does **not** supersede the monthly forward checklist above. Recorder
+uptime, actual Telegram delivery, runtime Top-1/cooldown, paper-account P&L and
+real slippage remain forward-only. Historical pass/fail is advisory and cannot
+change a badge, notification, paper rule or tier without a separate decision.

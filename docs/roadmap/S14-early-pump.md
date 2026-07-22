@@ -116,3 +116,7 @@ Live scan 本身用 5m base grid(BASE_BARS=576=48h 5m);⚡ detector 卻聚合到
 - 所以「比突破更早、又有真.edge」嘅訊號,用現有數據/訊號**造唔到**。
 
 **對用戶投訴嘅完整答案:** ⚡/增/擴 嘅「收破高帶量」已經係最早嘅**可靠** trigger;再早就淨係「望住貼近高位、上緊嘅幣」(= screener 高 strength / top10;S4d 量到「早 ~2h」但嗰個 lead 都係 geometry 唔係 predictive edge)。冇一個訊號可以喺 pump 前幾鐘可靠 fire 兼有可交易 edge。呢個係誠實嘅定案,唔係「未搵到」。S14 detector ✖(recording 留參考,badge/通知 OFF)。
+
+## 2026-07-21 H1 evidence update
+
+S14 全市場六個月有 5,503 events / 619 coins；10%×24h matched lift ×1.73，但 net −0.26%、只得 1/6 positive folds、bootstrap L95 −0.74%，固定 gate 結論係 `historical-fail`。所以由 recording-only 改寫為歷史 gate 已失敗；badge／通知維持 OFF。
